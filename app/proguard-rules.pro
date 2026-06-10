@@ -1,0 +1,3 @@
+-keep class kotlinx.serialization.** { *; }
+-keep @kotlinx.serialization.Serializable class * { *; }
+-keep class com.example.phonebilling.data.remote.** { *; }
