@@ -24,6 +24,9 @@ interface SessionDao {
     @Query("SELECT * FROM sessions WHERE deviceId = :deviceId AND status = 'ACTIVE' ORDER BY startedAt DESC LIMIT 1")
     suspend fun getActiveSessionForDevice(deviceId: String): SessionEntity?
 
+    @Query("SELECT * FROM sessions WHERE deviceId = :deviceId AND status = 'ACTIVE' ORDER BY startedAt DESC")
+    suspend fun getActiveSessionsForDevice(deviceId: String): List<SessionEntity>
+
     @Query("SELECT * FROM sessions WHERE synced = 0")
     suspend fun unsyncedSessions(): List<SessionEntity>
 

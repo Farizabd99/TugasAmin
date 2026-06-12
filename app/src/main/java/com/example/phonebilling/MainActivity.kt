@@ -110,23 +110,46 @@ private fun PhoneBillingNavHost(kioskController: KioskController) {
                 openStartSession = { navController.navigate(Route.StartSession.path) },
                 openHistory = { navController.navigate(Route.BillingHistory.path) },
                 openSettings = { navController.navigate(Route.Settings.path) },
+                logout = {
+                    navController.navigate(Route.OperatorLogin.path) {
+                        popUpTo(Route.OperatorDashboard.path) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
                 openSession = { navController.navigate(Route.ActiveSessionDetail.create(it)) }
             )
         }
-        composable(Route.DeviceList.path) { DeviceListScreen() }
+        composable(Route.DeviceList.path) {
+            DeviceListScreen(onBack = { navController.popBackStack() })
+        }
         composable(Route.StartSession.path) {
-            StartSessionScreen(openSession = {
-                navController.navigate(Route.ActiveSessionDetail.create(it))
-            })
+            StartSessionScreen(
+                onBack = { navController.popBackStack() },
+                openSession = {
+                    navController.navigate(Route.ActiveSessionDetail.create(it))
+                }
+            )
         }
         composable(
             route = Route.ActiveSessionDetail.path,
             arguments = listOf(navArgument("sessionId") { type = NavType.StringType })
         ) {
-            ActiveSessionDetailScreen()
+            ActiveSessionDetailScreen(
+                onBack = { navController.popBackStack() },
+                openDashboard = {
+                    navController.navigate(Route.OperatorDashboard.path) {
+                        popUpTo(Route.OperatorDashboard.path) { inclusive = false }
+                        launchSingleTop = true
+                    }
+                }
+            )
         }
-        composable(Route.BillingHistory.path) { BillingHistoryScreen() }
-        composable(Route.Settings.path) { SettingsScreen() }
+        composable(Route.BillingHistory.path) {
+            BillingHistoryScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Route.Settings.path) {
+            SettingsScreen(onBack = { navController.popBackStack() })
+        }
         composable(Route.ClientWaiting.path) { ClientWaitingScreen(clientViewModel) }
         composable(Route.ClientActive.path) {
             ClientActiveSessionScreen(kioskController = kioskController, viewModel = clientViewModel)

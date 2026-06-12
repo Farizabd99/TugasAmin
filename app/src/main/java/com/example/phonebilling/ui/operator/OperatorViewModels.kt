@@ -64,20 +64,33 @@ data class DashboardUiState(
     val devices: List<DeviceEntity> = emptyList(),
     val activeSessions: List<SessionEntity> = emptyList(),
     val history: List<SessionEntity> = emptyList(),
-    val revenueCents: Long = 0
+    val revenueCents: Long = 0,
+    val syncing: Boolean = false,
+    val syncMessage: String? = null
 )
 
 @HiltViewModel
 class OperatorDashboardViewModel @Inject constructor(
     private val repository: BillingRepository
 ) : ViewModel() {
-    val state: StateFlow<DashboardUiState> = combine(
+    private val syncing = MutableStateFlow(false)
+    private val syncMessage = MutableStateFlow<String?>(null)
+
+    private val dashboardData = combine(
         repository.observeDevices(),
         repository.observeActiveSessions(),
         repository.observeSessions(),
         repository.observeRevenue()
     ) { devices, active, history, revenue ->
         DashboardUiState(devices, active, history, revenue)
+    }
+
+    val state: StateFlow<DashboardUiState> = combine(
+        dashboardData,
+        syncing,
+        syncMessage
+    ) { dashboard, isSyncing, message ->
+        dashboard.copy(syncing = isSyncing, syncMessage = message)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardUiState())
 
     fun registerOperatorDevice() {
@@ -87,7 +100,13 @@ class OperatorDashboardViewModel @Inject constructor(
     }
 
     fun sync() {
-        viewModelScope.launch { repository.syncPendingLogs() }
+        viewModelScope.launch {
+            syncing.value = true
+            syncMessage.value = null
+            val result = repository.syncDevicesAndLogs()
+            syncing.value = false
+            syncMessage.value = if (result.isSuccess) "Sinkron selesai" else "Sinkron gagal"
+        }
     }
 }
 

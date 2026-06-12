@@ -17,6 +17,7 @@ import com.example.phonebilling.data.local.entity.SessionEntity
 import com.example.phonebilling.data.local.entity.SessionStatus
 import com.example.phonebilling.data.local.entity.TariffEntity
 import com.example.phonebilling.data.remote.BillingLogDto
+import com.example.phonebilling.data.remote.DeviceDto
 import com.example.phonebilling.data.remote.ExtendSessionRequest
 import com.example.phonebilling.data.remote.LocalServerApiFactory
 import com.example.phonebilling.data.remote.RegisterDeviceRequest
@@ -121,6 +122,7 @@ class BillingRepository @Inject constructor(
         operatorId: String
     ): SessionEntity {
         val now = now()
+        stopActiveSessionsForDevice(deviceId, now)
         val session = SessionEntity(
             sessionId = UUID.randomUUID().toString(),
             deviceId = deviceId,
@@ -149,9 +151,11 @@ class BillingRepository @Inject constructor(
     }
 
     suspend fun stopSession(session: SessionEntity): SessionEntity {
+        val stoppedAt = now()
+        stopActiveSessionsForDevice(session.deviceId, stoppedAt)
         val updated = session.copy(
             status = SessionStatus.STOPPED,
-            stoppedAt = now(),
+            stoppedAt = stoppedAt,
             synced = false
         )
         sessionDao.upsert(updated)
@@ -201,6 +205,23 @@ class BillingRepository @Inject constructor(
         ).data
         sessionDao.markSynced(result?.acceptedSessionIds ?: sessions.map { it.sessionId })
         billingLogDao.markSynced(result?.acceptedLogIds ?: logs.map { it.logId })
+    }
+
+    suspend fun syncDevicesAndLogs(): Result<Unit> = runCatching {
+        val baseUrl = settings.serverBaseUrl.first()
+        api(baseUrl).getDevices().data.orEmpty().forEach {
+            deviceDao.upsert(it.toEntity(baseUrl))
+            if (it.status != DeviceStatus.ACTIVE) {
+                stopActiveSessionsForDevice(it.deviceId, now())
+            }
+        }
+        syncPendingLogs().getOrThrow()
+    }
+
+    private suspend fun stopActiveSessionsForDevice(deviceId: String, stoppedAt: Long) {
+        sessionDao.getActiveSessionsForDevice(deviceId).forEach {
+            sessionDao.upsert(it.copy(status = SessionStatus.STOPPED, stoppedAt = stoppedAt, synced = false))
+        }
     }
 
     private suspend fun updateDeviceStatus(deviceId: String, status: DeviceStatus) {
@@ -275,4 +296,15 @@ private fun BillingLogEntity.toDto() = BillingLogDto(
     amountCents = amountCents,
     occurredAt = occurredAt,
     details = details
+)
+
+private fun DeviceDto.toEntity(serverBaseUrl: String) = DeviceEntity(
+    deviceId = deviceId,
+    displayName = displayName,
+    model = model,
+    mode = mode,
+    status = status,
+    serverBaseUrl = serverBaseUrl,
+    lastSeenAt = lastSeenAt,
+    createdAt = lastSeenAt
 )

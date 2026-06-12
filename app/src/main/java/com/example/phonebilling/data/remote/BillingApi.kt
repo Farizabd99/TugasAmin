@@ -9,6 +9,9 @@ interface BillingApi {
     @POST("api/devices/register")
     suspend fun registerDevice(@Body request: RegisterDeviceRequest): ApiEnvelope<DeviceDto>
 
+    @GET("api/devices")
+    suspend fun getDevices(): ApiEnvelope<List<DeviceDto>>
+
     @GET("api/devices/{deviceId}/status")
     suspend fun getDeviceStatus(@Path("deviceId") deviceId: String): ApiEnvelope<DeviceStatusDto>
 

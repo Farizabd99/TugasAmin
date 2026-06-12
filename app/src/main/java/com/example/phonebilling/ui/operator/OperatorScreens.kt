@@ -74,14 +74,14 @@ fun OperatorDashboardScreen(
     openStartSession: () -> Unit,
     openHistory: () -> Unit,
     openSettings: () -> Unit,
+    logout: () -> Unit,
     openSession: (String) -> Unit,
     viewModel: OperatorDashboardViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
     ScreenScaffold(
         title = "Dasbor",
-        subtitle = "Ringkasan perangkat aktif dan pendapatan",
-        actions = { SecondaryButton("Pengaturan", openSettings) }
+        subtitle = "Ringkasan perangkat aktif dan pendapatan"
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
@@ -94,8 +94,20 @@ fun OperatorDashboardScreen(
                 SecondaryButton("Perangkat", openDevices, Modifier.weight(1f))
                 SecondaryButton("Riwayat", openHistory, Modifier.weight(1f))
             }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                SecondaryButton("Pengaturan", openSettings, Modifier.weight(1f))
+                SecondaryButton("Keluar", logout, Modifier.weight(1f))
+            }
             SecondaryButton("Daftarkan Perangkat Ini", viewModel::registerOperatorDevice, Modifier.fillMaxWidth())
-            SecondaryButton("Sinkronkan", viewModel::sync, Modifier.fillMaxWidth())
+            SecondaryButton(
+                if (state.syncing) "Menyinkronkan..." else "Sinkronkan",
+                viewModel::sync,
+                Modifier.fillMaxWidth(),
+                enabled = !state.syncing
+            )
+            state.syncMessage?.let {
+                Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             Text("Perangkat aktif", style = MaterialTheme.typography.titleLarge)
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(state.activeSessions) { session ->
@@ -107,9 +119,16 @@ fun OperatorDashboardScreen(
 }
 
 @Composable
-fun DeviceListScreen(viewModel: OperatorDashboardViewModel = hiltViewModel()) {
+fun DeviceListScreen(
+    onBack: () -> Unit,
+    viewModel: OperatorDashboardViewModel = hiltViewModel()
+) {
     val state by viewModel.state.collectAsState()
-    ScreenScaffold(title = "Daftar Perangkat", subtitle = "Ponsel yang terdaftar dan baru terlihat") {
+    ScreenScaffold(
+        title = "Daftar Perangkat",
+        subtitle = "Ponsel yang terdaftar dan baru terlihat",
+        actions = { SecondaryButton("Kembali", onBack) }
+    ) {
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(state.devices) { DeviceRow(it) }
         }
@@ -118,6 +137,7 @@ fun DeviceListScreen(viewModel: OperatorDashboardViewModel = hiltViewModel()) {
 
 @Composable
 fun StartSessionScreen(
+    onBack: () -> Unit,
     openSession: (String) -> Unit,
     viewModel: StartSessionViewModel = hiltViewModel()
 ) {
@@ -125,25 +145,37 @@ fun StartSessionScreen(
     LaunchedEffect(state.lastStartedSessionId) {
         state.lastStartedSessionId?.let(openSession)
     }
-    ScreenScaffold(title = "Mulai Sesi", subtitle = "Pilih perangkat dan tarif") {
+    ScreenScaffold(
+        title = "Mulai Sesi",
+        subtitle = "Pilih perangkat dan tarif",
+        actions = { SecondaryButton("Kembali", onBack) }
+    ) {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("Perangkat", style = MaterialTheme.typography.titleLarge)
-            state.devices.forEach {
-                SelectionRow(
-                    title = it.displayName,
-                    subtitle = "${it.status.toIndonesian()} - ${it.model}",
-                    selected = it.deviceId == state.selectedDeviceId,
-                    onClick = { viewModel.selectDevice(it.deviceId) }
-                )
+            if (state.devices.isEmpty()) {
+                Text("Belum ada perangkat terdaftar.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                state.devices.forEach {
+                    SelectionRow(
+                        title = it.displayName,
+                        subtitle = "${it.status.toIndonesian()} - ${it.model}",
+                        selected = it.deviceId == state.selectedDeviceId,
+                        onClick = { viewModel.selectDevice(it.deviceId) }
+                    )
+                }
             }
             Text("Tarif", style = MaterialTheme.typography.titleLarge)
-            state.tariffs.forEach {
-                SelectionRow(
-                    title = it.name,
-                    subtitle = it.priceCents.toRupiah(),
-                    selected = it.tariffId == state.selectedTariffId,
-                    onClick = { viewModel.selectTariff(it.tariffId) }
-                )
+            if (state.tariffs.isEmpty()) {
+                Text("Belum ada tarif tersedia.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                state.tariffs.forEach {
+                    SelectionRow(
+                        title = it.name,
+                        subtitle = it.priceCents.toRupiah(),
+                        selected = it.tariffId == state.selectedTariffId,
+                        onClick = { viewModel.selectTariff(it.tariffId) }
+                    )
+                }
             }
             PrimaryButton("Mulai", viewModel::start, Modifier.fillMaxWidth(), enabled = state.selectedDeviceId != null && state.selectedTariffId != null)
         }
@@ -151,19 +183,39 @@ fun StartSessionScreen(
 }
 
 @Composable
-fun ActiveSessionDetailScreen(viewModel: SessionDetailViewModel = hiltViewModel()) {
+fun ActiveSessionDetailScreen(
+    onBack: () -> Unit,
+    openDashboard: () -> Unit,
+    viewModel: SessionDetailViewModel = hiltViewModel()
+) {
     val session by viewModel.session.collectAsState()
-    ScreenScaffold(title = "Sesi Aktif", subtitle = session?.deviceId ?: "Sesi tidak ditemukan") {
+    ScreenScaffold(
+        title = "Sesi Aktif",
+        subtitle = session?.deviceId ?: "Sesi tidak ditemukan",
+        actions = { SecondaryButton("Kembali", onBack) }
+    ) {
         session?.let {
+            val isActive = it.status == SessionStatus.ACTIVE
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 MetricCard("Status", it.status.toIndonesian(), Modifier.fillMaxWidth())
                 MetricCard("Mulai", it.startedAt.toClock(), Modifier.fillMaxWidth())
                 MetricCard("Selesai", it.endsAt.toClock(), Modifier.fillMaxWidth())
                 MetricCard("Sisa Waktu", (it.endsAt - System.currentTimeMillis()).toCountdown(), Modifier.fillMaxWidth())
                 MetricCard("Total", it.priceCents.toRupiah(), Modifier.fillMaxWidth())
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                    SecondaryButton("Tambah 30 mnt", { viewModel.extend(it) }, Modifier.weight(1f))
-                    PrimaryButton("Hentikan", { viewModel.stop(it) }, Modifier.weight(1f))
+                if (isActive) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                        SecondaryButton("Tambah 30 mnt", { viewModel.extend(it) }, Modifier.weight(1f))
+                        PrimaryButton(
+                            "Hentikan",
+                            {
+                                viewModel.stop(it)
+                                openDashboard()
+                            },
+                            Modifier.weight(1f)
+                        )
+                    }
+                } else {
+                    PrimaryButton("Kembali ke Dasbor", openDashboard, Modifier.fillMaxWidth())
                 }
             }
         } ?: Text("Tidak ada sesi lokal untuk halaman ini.")
@@ -171,9 +223,16 @@ fun ActiveSessionDetailScreen(viewModel: SessionDetailViewModel = hiltViewModel(
 }
 
 @Composable
-fun BillingHistoryScreen(viewModel: OperatorDashboardViewModel = hiltViewModel()) {
+fun BillingHistoryScreen(
+    onBack: () -> Unit,
+    viewModel: OperatorDashboardViewModel = hiltViewModel()
+) {
     val state by viewModel.state.collectAsState()
-    ScreenScaffold(title = "Riwayat Tagihan", subtitle = "Catatan sesi aktif dan selesai") {
+    ScreenScaffold(
+        title = "Riwayat Tagihan",
+        subtitle = "Catatan sesi aktif dan selesai",
+        actions = { SecondaryButton("Kembali", onBack) }
+    ) {
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(state.history) { SessionRow(it, onClick = {}) }
         }
@@ -181,9 +240,16 @@ fun BillingHistoryScreen(viewModel: OperatorDashboardViewModel = hiltViewModel()
 }
 
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
+fun SettingsScreen(
+    onBack: () -> Unit,
+    viewModel: SettingsViewModel = hiltViewModel()
+) {
     val state by viewModel.state.collectAsState()
-    ScreenScaffold(title = "Pengaturan", subtitle = "Koneksi server lokal") {
+    ScreenScaffold(
+        title = "Pengaturan",
+        subtitle = "Koneksi server lokal",
+        actions = { SecondaryButton("Kembali", onBack) }
+    ) {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             OutlinedTextField(
                 value = state.serverUrl,
