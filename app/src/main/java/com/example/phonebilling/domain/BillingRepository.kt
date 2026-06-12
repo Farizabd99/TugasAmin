@@ -59,15 +59,15 @@ class BillingRepository @Inject constructor(
                     operatorId = "operator-default",
                     username = "admin",
                     passwordHash = sha256("admin123"),
-                    displayName = "Main Operator",
+                    displayName = "Operator Utama",
                     active = true,
                     createdAt = now
                 )
             )
             listOf(
-                TariffEntity("tariff-30", "30 minutes", 30, 5000, true),
-                TariffEntity("tariff-60", "1 hour", 60, 9000, true),
-                TariffEntity("tariff-120", "2 hours", 120, 16000, true)
+                TariffEntity("tariff-30", "30 menit", 30, 5000, true),
+                TariffEntity("tariff-60", "1 jam", 60, 9000, true),
+                TariffEntity("tariff-120", "2 jam", 120, 16000, true)
             ).forEach { tariffDao.upsert(it) }
         }
     }
@@ -86,7 +86,7 @@ class BillingRepository @Inject constructor(
         val baseUrl = settings.serverBaseUrl.first()
         val local = DeviceEntity(
             deviceId = deviceId,
-            displayName = displayName.ifBlank { Build.MODEL ?: "Android device" },
+            displayName = displayName.ifBlank { Build.MODEL ?: "Perangkat Android" },
             model = Build.MODEL ?: "Android",
             mode = mode,
             status = DeviceStatus.WAITING,
@@ -136,7 +136,7 @@ class BillingRepository @Inject constructor(
         )
         sessionDao.upsert(session)
         updateDeviceStatus(deviceId, DeviceStatus.ACTIVE)
-        addLog(session, BillingEvent.SESSION_STARTED, tariff.priceCents, "Started ${tariff.name}")
+        addLog(session, BillingEvent.SESSION_STARTED, tariff.priceCents, "Memulai ${tariff.name}")
 
         runCatching {
             api(settings.serverBaseUrl.first()).startSession(
@@ -156,7 +156,7 @@ class BillingRepository @Inject constructor(
         )
         sessionDao.upsert(updated)
         updateDeviceStatus(session.deviceId, DeviceStatus.WAITING)
-        addLog(updated, BillingEvent.SESSION_STOPPED, 0, "Stopped manually")
+        addLog(updated, BillingEvent.SESSION_STOPPED, 0, "Dihentikan manual")
         runCatching { api(settings.serverBaseUrl.first()).stopSession(session.sessionId) }
         return updated
     }
@@ -169,7 +169,7 @@ class BillingRepository @Inject constructor(
             synced = false
         )
         sessionDao.upsert(updated)
-        addLog(updated, BillingEvent.SESSION_EXTENDED, priceCents, "Extended $minutes minutes")
+        addLog(updated, BillingEvent.SESSION_EXTENDED, priceCents, "Ditambah $minutes menit")
         runCatching {
             api(settings.serverBaseUrl.first()).extendSession(
                 session.sessionId,
@@ -183,7 +183,7 @@ class BillingRepository @Inject constructor(
         val updated = session.copy(status = SessionStatus.EXPIRED, stoppedAt = now(), synced = false)
         sessionDao.upsert(updated)
         updateDeviceStatus(session.deviceId, DeviceStatus.EXPIRED)
-        addLog(updated, BillingEvent.SESSION_EXPIRED, 0, "Session time expired")
+        addLog(updated, BillingEvent.SESSION_EXPIRED, 0, "Waktu sesi habis")
         return updated
     }
 

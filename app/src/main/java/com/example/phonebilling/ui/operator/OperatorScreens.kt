@@ -22,7 +22,10 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.phonebilling.data.local.entity.DeviceEntity
+import com.example.phonebilling.data.local.entity.DeviceMode
+import com.example.phonebilling.data.local.entity.DeviceStatus
 import com.example.phonebilling.data.local.entity.SessionEntity
+import com.example.phonebilling.data.local.entity.SessionStatus
 import com.example.phonebilling.ui.common.MetricCard
 import com.example.phonebilling.ui.common.PrimaryButton
 import com.example.phonebilling.ui.common.ScreenScaffold
@@ -41,26 +44,26 @@ fun OperatorLoginScreen(
     LaunchedEffect(state.operator) {
         if (state.operator != null) onLoggedIn()
     }
-    ScreenScaffold(title = "Operator Login", subtitle = "Restricted phone billing console") {
+    ScreenScaffold(title = "Masuk Operator", subtitle = "Kelola sesi pemakaian ponsel dengan aman") {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             OutlinedTextField(
                 value = state.username,
                 onValueChange = viewModel::updateUsername,
-                label = { Text("Username") },
+                label = { Text("Nama pengguna") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
             OutlinedTextField(
                 value = state.password,
                 onValueChange = viewModel::updatePassword,
-                label = { Text("Password") },
+                label = { Text("Kata sandi") },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth()
             )
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            PrimaryButton("Login", viewModel::login, Modifier.fillMaxWidth(), enabled = !state.loading)
-            SecondaryButton("Open Client Mode", openClient, Modifier.fillMaxWidth())
+            PrimaryButton("Masuk", viewModel::login, Modifier.fillMaxWidth(), enabled = !state.loading)
+            SecondaryButton("Buka Mode Klien", openClient, Modifier.fillMaxWidth())
         }
     }
 }
@@ -76,26 +79,24 @@ fun OperatorDashboardScreen(
 ) {
     val state by viewModel.state.collectAsState()
     ScreenScaffold(
-        title = "Dashboard",
-        subtitle = "Active phones and billing overview",
-        actions = { SecondaryButton("Settings", openSettings) }
+        title = "Dasbor",
+        subtitle = "Ringkasan perangkat aktif dan pendapatan",
+        actions = { SecondaryButton("Pengaturan", openSettings) }
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                MetricCard("Devices", state.devices.size.toString(), Modifier.weight(1f))
-                MetricCard("Active", state.activeSessions.size.toString(), Modifier.weight(1f))
+                MetricCard("Perangkat", state.devices.size.toString(), Modifier.weight(1f))
+                MetricCard("Aktif", state.activeSessions.size.toString(), Modifier.weight(1f))
             }
-            MetricCard("Revenue", state.revenueCents.toRupiah(), Modifier.fillMaxWidth())
-            PrimaryButton("Start Session", openStartSession, Modifier.fillMaxWidth())
+            MetricCard("Pendapatan", state.revenueCents.toRupiah(), Modifier.fillMaxWidth())
+            PrimaryButton("Mulai Sesi", openStartSession, Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                SecondaryButton("Devices", openDevices, Modifier.weight(1f))
-                SecondaryButton("History", openHistory, Modifier.weight(1f))
+                SecondaryButton("Perangkat", openDevices, Modifier.weight(1f))
+                SecondaryButton("Riwayat", openHistory, Modifier.weight(1f))
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                SecondaryButton("Register This Device", viewModel::registerOperatorDevice, Modifier.weight(1f))
-                SecondaryButton("Sync", viewModel::sync, Modifier.weight(1f))
-            }
-            Text("Active devices", style = MaterialTheme.typography.titleLarge)
+            SecondaryButton("Daftarkan Perangkat Ini", viewModel::registerOperatorDevice, Modifier.fillMaxWidth())
+            SecondaryButton("Sinkronkan", viewModel::sync, Modifier.fillMaxWidth())
+            Text("Perangkat aktif", style = MaterialTheme.typography.titleLarge)
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(state.activeSessions) { session ->
                     SessionRow(session, onClick = { openSession(session.sessionId) })
@@ -108,7 +109,7 @@ fun OperatorDashboardScreen(
 @Composable
 fun DeviceListScreen(viewModel: OperatorDashboardViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
-    ScreenScaffold(title = "Device List", subtitle = "Registered and recently seen phones") {
+    ScreenScaffold(title = "Daftar Perangkat", subtitle = "Ponsel yang terdaftar dan baru terlihat") {
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(state.devices) { DeviceRow(it) }
         }
@@ -124,18 +125,18 @@ fun StartSessionScreen(
     LaunchedEffect(state.lastStartedSessionId) {
         state.lastStartedSessionId?.let(openSession)
     }
-    ScreenScaffold(title = "Start Session", subtitle = "Choose a device and tariff") {
+    ScreenScaffold(title = "Mulai Sesi", subtitle = "Pilih perangkat dan tarif") {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("Device", style = MaterialTheme.typography.titleLarge)
+            Text("Perangkat", style = MaterialTheme.typography.titleLarge)
             state.devices.forEach {
                 SelectionRow(
                     title = it.displayName,
-                    subtitle = "${it.status} • ${it.model}",
+                    subtitle = "${it.status.toIndonesian()} - ${it.model}",
                     selected = it.deviceId == state.selectedDeviceId,
                     onClick = { viewModel.selectDevice(it.deviceId) }
                 )
             }
-            Text("Tariff", style = MaterialTheme.typography.titleLarge)
+            Text("Tarif", style = MaterialTheme.typography.titleLarge)
             state.tariffs.forEach {
                 SelectionRow(
                     title = it.name,
@@ -144,7 +145,7 @@ fun StartSessionScreen(
                     onClick = { viewModel.selectTariff(it.tariffId) }
                 )
             }
-            PrimaryButton("Start", viewModel::start, Modifier.fillMaxWidth(), enabled = state.selectedDeviceId != null && state.selectedTariffId != null)
+            PrimaryButton("Mulai", viewModel::start, Modifier.fillMaxWidth(), enabled = state.selectedDeviceId != null && state.selectedTariffId != null)
         }
     }
 }
@@ -152,27 +153,27 @@ fun StartSessionScreen(
 @Composable
 fun ActiveSessionDetailScreen(viewModel: SessionDetailViewModel = hiltViewModel()) {
     val session by viewModel.session.collectAsState()
-    ScreenScaffold(title = "Active Session", subtitle = session?.deviceId ?: "Session not found") {
+    ScreenScaffold(title = "Sesi Aktif", subtitle = session?.deviceId ?: "Sesi tidak ditemukan") {
         session?.let {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                MetricCard("Status", it.status.name, Modifier.fillMaxWidth())
-                MetricCard("Started", it.startedAt.toClock(), Modifier.fillMaxWidth())
-                MetricCard("Ends", it.endsAt.toClock(), Modifier.fillMaxWidth())
-                MetricCard("Remaining", (it.endsAt - System.currentTimeMillis()).toCountdown(), Modifier.fillMaxWidth())
+                MetricCard("Status", it.status.toIndonesian(), Modifier.fillMaxWidth())
+                MetricCard("Mulai", it.startedAt.toClock(), Modifier.fillMaxWidth())
+                MetricCard("Selesai", it.endsAt.toClock(), Modifier.fillMaxWidth())
+                MetricCard("Sisa Waktu", (it.endsAt - System.currentTimeMillis()).toCountdown(), Modifier.fillMaxWidth())
                 MetricCard("Total", it.priceCents.toRupiah(), Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                    SecondaryButton("Extend 30m", { viewModel.extend(it) }, Modifier.weight(1f))
-                    PrimaryButton("Stop", { viewModel.stop(it) }, Modifier.weight(1f))
+                    SecondaryButton("Tambah 30 mnt", { viewModel.extend(it) }, Modifier.weight(1f))
+                    PrimaryButton("Hentikan", { viewModel.stop(it) }, Modifier.weight(1f))
                 }
             }
-        } ?: Text("No local session exists for this route.")
+        } ?: Text("Tidak ada sesi lokal untuk halaman ini.")
     }
 }
 
 @Composable
 fun BillingHistoryScreen(viewModel: OperatorDashboardViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
-    ScreenScaffold(title = "Billing History", subtitle = "Completed and active session ledger") {
+    ScreenScaffold(title = "Riwayat Tagihan", subtitle = "Catatan sesi aktif dan selesai") {
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(state.history) { SessionRow(it, onClick = {}) }
         }
@@ -182,37 +183,44 @@ fun BillingHistoryScreen(viewModel: OperatorDashboardViewModel = hiltViewModel()
 @Composable
 fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
-    ScreenScaffold(title = "Settings", subtitle = "Local server connection") {
+    ScreenScaffold(title = "Pengaturan", subtitle = "Koneksi server lokal") {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             OutlinedTextField(
                 value = state.serverUrl,
                 onValueChange = viewModel::updateUrl,
-                label = { Text("Server base URL") },
+                label = { Text("URL dasar server") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
-            PrimaryButton("Save", viewModel::save, Modifier.fillMaxWidth())
-            if (state.saved) Text("Saved", color = MaterialTheme.colorScheme.primary)
+            PrimaryButton("Simpan", viewModel::save, Modifier.fillMaxWidth())
+            if (state.saved) Text("Tersimpan", color = MaterialTheme.colorScheme.primary)
         }
     }
 }
 
 @Composable
 private fun DeviceRow(device: DeviceEntity) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(device.displayName, style = MaterialTheme.typography.titleLarge)
-            Text("${device.status} • ${device.mode} • ${device.model}", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                "${device.status.toIndonesian()} - ${device.mode.toIndonesian()} - ${device.model}",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
 
 @Composable
 private fun SessionRow(session: SessionEntity, onClick: () -> Unit) {
-    Card(onClick = onClick, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+    Card(onClick = onClick, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(session.deviceId, style = MaterialTheme.typography.titleLarge)
-            Text("${session.status} • ends ${session.endsAt.toClock()} • ${session.priceCents.toRupiah()}")
+            Text(
+                "${session.status.toIndonesian()} - selesai ${session.endsAt.toClock()} - ${session.priceCents.toRupiah()}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -223,12 +231,31 @@ private fun SelectionRow(title: String, subtitle: String, selected: Boolean, onC
         onClick = onClick,
         colors = CardDefaults.cardColors(
             containerColor = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-            else MaterialTheme.colorScheme.surfaceVariant
+            else MaterialTheme.colorScheme.surface
         )
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(title, style = MaterialTheme.typography.titleLarge)
-            Text(subtitle, style = MaterialTheme.typography.bodyLarge)
+            Text(subtitle, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+private fun DeviceStatus.toIndonesian(): String = when (this) {
+    DeviceStatus.WAITING -> "Menunggu"
+    DeviceStatus.ACTIVE -> "Aktif"
+    DeviceStatus.EXPIRED -> "Waktu habis"
+    DeviceStatus.OFFLINE -> "Tidak terhubung"
+}
+
+private fun DeviceMode.toIndonesian(): String = when (this) {
+    DeviceMode.OPERATOR -> "Operator"
+    DeviceMode.CLIENT -> "Klien"
+}
+
+private fun SessionStatus.toIndonesian(): String = when (this) {
+    SessionStatus.PENDING -> "Menunggu"
+    SessionStatus.ACTIVE -> "Aktif"
+    SessionStatus.EXPIRED -> "Waktu habis"
+    SessionStatus.STOPPED -> "Dihentikan"
 }

@@ -18,21 +18,21 @@ val AppleBlue = Color(0xFF0071E3)
 val TextDominant = Color(0xFF1D1D1F)
 val TextSecondary = Color(0xFF333336)
 val TextTertiary = Color(0xFF6E6E73)
-val SurfaceLight = Color(0xFFEDEDF2)
+val SurfaceLight = Color(0xFFE5E5EA)
 
 private val PhoneBillingColors: ColorScheme = lightColorScheme(
     primary = AppleBlue,
     onPrimary = Color.White,
-    secondary = Color(0xFF0077ED),
+    secondary = Color(0xFF34C759),
     onSecondary = Color.White,
-    background = Color.White,
+    background = Color(0xFFF5F5F7),
     onBackground = TextDominant,
     surface = Color.White,
     onSurface = TextDominant,
-    surfaceVariant = SurfaceLight,
+    surfaceVariant = Color(0xFFF2F2F7),
     onSurfaceVariant = TextSecondary,
-    outline = Color(0xFFD5D5D7),
-    error = Color(0xFFB00020)
+    outline = Color(0xFFD1D1D6),
+    error = Color(0xFFD70015)
 )
 
 private val PhoneBillingTypography = Typography(
@@ -45,14 +45,14 @@ private val PhoneBillingTypography = Typography(
     headlineMedium = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 28.sp,
-        lineHeight = 32.sp
+        fontSize = 30.sp,
+        lineHeight = 36.sp
     ),
     titleLarge = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 24.sp,
-        lineHeight = 28.sp
+        fontSize = 20.sp,
+        lineHeight = 25.sp
     ),
     bodyLarge = TextStyle(
         fontFamily = FontFamily.Default,
@@ -62,9 +62,10 @@ private val PhoneBillingTypography = Typography(
     ),
     labelSmall = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Medium,
+        fontWeight = FontWeight.SemiBold,
         fontSize = 12.sp,
-        lineHeight = 16.sp
+        lineHeight = 16.sp,
+        letterSpacing = 0.sp
     )
 )
 

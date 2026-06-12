@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Phone Billing</string>
-    <string name="device_admin_label">Phone Billing Kiosk Admin</string>
-    <string name="device_admin_description">Enables supervised kiosk mode for restricted billing sessions.</string>
+    <string name="app_name">Tagihan Ponsel</string>
+    <string name="device_admin_label">Admin Kios Tagihan Ponsel</string>
+    <string name="device_admin_description">Mengaktifkan mode kios terawasi untuk sesi pemakaian berbayar.</string>
 </resources>

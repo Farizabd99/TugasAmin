@@ -51,7 +51,7 @@ class ClientViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            repository.registerCurrentDevice("Client phone", DeviceMode.CLIENT)
+            repository.registerCurrentDevice("Ponsel klien", DeviceMode.CLIENT)
         }
         viewModelScope.launch {
             while (true) {

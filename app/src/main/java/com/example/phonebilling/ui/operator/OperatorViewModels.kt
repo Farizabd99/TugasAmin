@@ -49,7 +49,7 @@ class OperatorLoginViewModel @Inject constructor(
                 copy(
                     loading = false,
                     operator = operator,
-                    error = if (operator == null) "Invalid operator credentials" else null
+                    error = if (operator == null) "Nama pengguna atau kata sandi tidak sesuai" else null
                 )
             }
         }
@@ -82,7 +82,7 @@ class OperatorDashboardViewModel @Inject constructor(
 
     fun registerOperatorDevice() {
         viewModelScope.launch {
-            repository.registerCurrentDevice("Operator station", DeviceMode.OPERATOR)
+            repository.registerCurrentDevice("Stasiun operator", DeviceMode.OPERATOR)
         }
     }
 

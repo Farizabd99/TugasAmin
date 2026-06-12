@@ -14,6 +14,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.phonebilling.admin.KioskController
 import com.example.phonebilling.ui.common.MetricCard
@@ -26,11 +27,11 @@ fun ClientWaitingScreen(
     viewModel: ClientViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
-    ScreenScaffold(title = "Waiting", subtitle = "Device is ready for activation") {
+    ScreenScaffold(title = "Menunggu", subtitle = "Perangkat siap diaktifkan oleh operator") {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            MetricCard("Device ID", state.deviceId, Modifier.fillMaxWidth())
-            MetricCard("Server", if (state.serverOnline) "Online" else "Offline, using local state", Modifier.fillMaxWidth())
-            PrimaryButton("Sync Now", viewModel::syncNow, Modifier.fillMaxWidth())
+            MetricCard("ID Perangkat", state.deviceId, Modifier.fillMaxWidth())
+            MetricCard("Server", if (state.serverOnline) "Terhubung" else "Tidak terhubung, memakai data lokal", Modifier.fillMaxWidth())
+            PrimaryButton("Sinkronkan Sekarang", viewModel::syncNow, Modifier.fillMaxWidth())
         }
     }
 }
@@ -51,15 +52,15 @@ fun ClientActiveSessionScreen(
         }
         onDispose { }
     }
-    ScreenScaffold(title = "Session Active", subtitle = "Phone usage is restricted") {
+    ScreenScaffold(title = "Sesi Aktif", subtitle = "Pemakaian ponsel sedang dibatasi") {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
             Text(
                 state.remainingMillis.toCountdown(),
                 style = MaterialTheme.typography.displayMedium,
                 color = MaterialTheme.colorScheme.primary
             )
-            MetricCard("Device ID", state.deviceId, Modifier.fillMaxWidth())
-            MetricCard("Ends In", state.remainingMillis.toCountdown(), Modifier.fillMaxWidth())
+            MetricCard("ID Perangkat", state.deviceId, Modifier.fillMaxWidth())
+            MetricCard("Sisa Waktu", state.remainingMillis.toCountdown(), Modifier.fillMaxWidth())
         }
     }
 }
@@ -77,11 +78,11 @@ fun ClientExpiredScreen(
         activity?.let { kioskController.start(it) }
         onDispose { }
     }
-    ScreenScaffold(title = "Time Expired", subtitle = "Please contact the operator") {
+    ScreenScaffold(title = "Waktu Habis", subtitle = "Silakan hubungi operator untuk bantuan") {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            MetricCard("Device ID", state.deviceId, Modifier.fillMaxWidth())
-            MetricCard("Status", if (state.serverOnline) "Synced" else "Pending sync", Modifier.fillMaxWidth())
-            PrimaryButton("Retry Sync", viewModel::syncNow, Modifier.fillMaxWidth())
+            MetricCard("ID Perangkat", state.deviceId, Modifier.fillMaxWidth())
+            MetricCard("Status", if (state.serverOnline) "Tersinkron" else "Menunggu sinkronisasi", Modifier.fillMaxWidth())
+            PrimaryButton("Coba Sinkronkan Lagi", viewModel::syncNow, Modifier.fillMaxWidth())
         }
     }
 }
