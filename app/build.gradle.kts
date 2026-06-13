@@ -13,7 +13,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.phonebilling"
+        applicationId = "com.amin.wartel"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

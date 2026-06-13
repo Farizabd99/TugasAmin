@@ -56,7 +56,7 @@ Make customer devices reliably restricted during active sessions.
 Device Owner testing command:
 
 ```bash
-adb shell dpm set-device-owner com.example.phonebilling/.admin.PhoneBillingDeviceAdminReceiver
+adb shell dpm set-device-owner com.amin.wartel/com.example.phonebilling.admin.PhoneBillingDeviceAdminReceiver
 ```
 
 ## Phase 5: Production Operator Flow

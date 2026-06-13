@@ -30,19 +30,19 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 4. Set Device Owner:
 
 ```bash
-adb shell dpm set-device-owner com.example.phonebilling/.admin.PhoneBillingDeviceAdminReceiver
+adb shell dpm set-device-owner com.amin.wartel/com.example.phonebilling.admin.PhoneBillingDeviceAdminReceiver
 ```
 
 5. Verify ownership:
 
 ```bash
-adb shell dumpsys device_policy | grep -i com.example.phonebilling
+adb shell dumpsys device_policy | grep -i com.amin.wartel
 ```
 
 6. Launch the app:
 
 ```bash
-adb shell monkey -p com.example.phonebilling 1
+adb shell monkey -p com.amin.wartel 1
 ```
 
 7. Open Client Mode from the login screen on client phones.
@@ -54,7 +54,7 @@ adb shell monkey -p com.example.phonebilling 1
 Device Owner removal usually requires factory reset. On some debug builds, this may work:
 
 ```bash
-adb shell dpm remove-active-admin com.example.phonebilling/.admin.PhoneBillingDeviceAdminReceiver
+adb shell dpm remove-active-admin com.amin.wartel/com.example.phonebilling.admin.PhoneBillingDeviceAdminReceiver
 ```
 
 If it fails, factory reset the device.
@@ -65,7 +65,7 @@ For production, provision through Android Enterprise:
 
 - Use zero-touch enrollment, QR provisioning, NFC bump, or an EMM/MDM.
 - Configure this app as Device Owner or install it under a Device Owner DPC.
-- Allowlist package `com.example.phonebilling` for Lock Task Mode.
+- Allowlist package `com.amin.wartel` for Lock Task Mode.
 - Disable status bar, keyguard, settings access, safe boot, app uninstall, and unknown sources through policy.
 - Use managed configuration for the local server URL if your EMM supports it.
 
