@@ -54,6 +54,13 @@ class ClientViewModel @Inject constructor(
             repository.registerCurrentDevice("Ponsel klien", DeviceMode.CLIENT)
         }
         viewModelScope.launch {
+            repository.observeDeviceId().collect { deviceId ->
+                if (deviceId.isNotBlank()) {
+                    repository.startRealtimeSync(deviceId)
+                }
+            }
+        }
+        viewModelScope.launch {
             while (true) {
                 ticker.value = System.currentTimeMillis()
                 state.value.activeSession?.let {
@@ -62,20 +69,16 @@ class ClientViewModel @Inject constructor(
                 delay(1_000)
             }
         }
-        viewModelScope.launch {
-            while (true) {
-                val result = state.value.deviceId.takeIf { it.isNotBlank() }?.let {
-                    repository.refreshClientStatus(it)
-                }
-                serverOnline.value = result?.isSuccess ?: true
-                delay(5_000)
-            }
-        }
     }
 
     fun syncNow() {
         viewModelScope.launch {
             serverOnline.value = repository.syncPendingLogs().isSuccess
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        repository.stopRealtimeSync()
     }
 }

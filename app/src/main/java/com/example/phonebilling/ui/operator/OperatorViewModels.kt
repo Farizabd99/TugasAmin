@@ -93,6 +93,10 @@ class OperatorDashboardViewModel @Inject constructor(
         dashboard.copy(syncing = isSyncing, syncMessage = message)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardUiState())
 
+    init {
+        repository.startOperatorRealtimeSync()
+    }
+
     fun registerOperatorDevice() {
         viewModelScope.launch {
             repository.registerCurrentDevice("Stasiun operator", DeviceMode.OPERATOR)
@@ -107,6 +111,11 @@ class OperatorDashboardViewModel @Inject constructor(
             syncing.value = false
             syncMessage.value = if (result.isSuccess) "Sinkron selesai" else "Sinkron gagal"
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        repository.stopOperatorRealtimeSync()
     }
 }
 
