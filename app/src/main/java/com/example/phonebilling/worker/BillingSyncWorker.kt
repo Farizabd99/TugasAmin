@@ -15,7 +15,7 @@ class BillingSyncWorker @AssistedInject constructor(
     private val repository: BillingRepository
 ) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result =
-        repository.syncPendingLogs().fold(
+        repository.syncDevicesAndLogs().fold(
             onSuccess = { Result.success() },
             onFailure = { Result.retry() }
         )

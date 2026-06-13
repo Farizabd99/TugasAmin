@@ -115,7 +115,9 @@ data class StartSessionUiState(
     val tariffs: List<TariffEntity> = emptyList(),
     val selectedDeviceId: String? = null,
     val selectedTariffId: String? = null,
-    val lastStartedSessionId: String? = null
+    val lastStartedSessionId: String? = null,
+    val starting: Boolean = false,
+    val message: String? = null
 )
 
 @HiltViewModel
@@ -125,15 +127,31 @@ class StartSessionViewModel @Inject constructor(
     private val selectedDeviceId = MutableStateFlow<String?>(null)
     private val selectedTariffId = MutableStateFlow<String?>(null)
     private val lastStarted = MutableStateFlow<String?>(null)
+    private val starting = MutableStateFlow(false)
+    private val message = MutableStateFlow<String?>(null)
 
-    val state: StateFlow<StartSessionUiState> = combine(
+    private val sessionData = combine(
         repository.observeDevices(),
         repository.observeTariffs(),
         selectedDeviceId,
         selectedTariffId,
         lastStarted
     ) { devices, tariffs, deviceId, tariffId, last ->
-        StartSessionUiState(devices, tariffs, deviceId ?: devices.firstOrNull()?.deviceId, tariffId ?: tariffs.firstOrNull()?.tariffId, last)
+        StartSessionUiState(
+            devices = devices,
+            tariffs = tariffs,
+            selectedDeviceId = deviceId ?: devices.firstOrNull()?.deviceId,
+            selectedTariffId = tariffId ?: tariffs.firstOrNull()?.tariffId,
+            lastStartedSessionId = last
+        )
+    }
+
+    val state: StateFlow<StartSessionUiState> = combine(
+        sessionData,
+        starting,
+        message
+    ) { data, isStarting, currentMessage ->
+        data.copy(starting = isStarting, message = currentMessage)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), StartSessionUiState())
 
     fun selectDevice(deviceId: String) { selectedDeviceId.value = deviceId }
@@ -144,10 +162,28 @@ class StartSessionViewModel @Inject constructor(
             val current = state.value
             val deviceId = current.selectedDeviceId ?: return@launch
             val tariff = current.tariffs.firstOrNull { it.tariffId == current.selectedTariffId } ?: return@launch
-            lastStarted.value = repository.startSession(deviceId, tariff, operatorId).sessionId
+            starting.value = true
+            message.value = null
+            val result = repository.startSession(deviceId, tariff, operatorId)
+            starting.value = false
+            result.fold(
+                onSuccess = {
+                    message.value = "Sesi berhasil dimulai"
+                    lastStarted.value = it.sessionId
+                },
+                onFailure = {
+                    message.value = "Gagal memulai sesi. Periksa koneksi server."
+                }
+            )
         }
     }
 }
+
+data class SessionActionUiState(
+    val working: Boolean = false,
+    val message: String? = null,
+    val lastCompletedSessionId: String? = null
+)
 
 @HiltViewModel
 class SessionDetailViewModel @Inject constructor(
@@ -160,12 +196,31 @@ class SessionDetailViewModel @Inject constructor(
         .map { sessions -> sessions.firstOrNull { it.sessionId == sessionId } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    private val _actionState = MutableStateFlow(SessionActionUiState())
+    val actionState: StateFlow<SessionActionUiState> = _actionState
+
     fun stop(session: SessionEntity) {
-        viewModelScope.launch { repository.stopSession(session) }
+        viewModelScope.launch {
+            updateAction { copy(working = true, message = null) }
+            repository.stopSession(session).fold(
+                onSuccess = { updateAction { copy(working = false, message = "Sesi dihentikan", lastCompletedSessionId = it.sessionId) } },
+                onFailure = { updateAction { copy(working = false, message = "Gagal menghentikan sesi. Coba lagi.") } }
+            )
+        }
     }
 
     fun extend(session: SessionEntity, minutes: Int = 30, priceCents: Long = 5000) {
-        viewModelScope.launch { repository.extendSession(session, minutes, priceCents) }
+        viewModelScope.launch {
+            updateAction { copy(working = true, message = null) }
+            repository.extendSession(session, minutes, priceCents).fold(
+                onSuccess = { updateAction { copy(working = false, message = "Sesi berhasil ditambah") } },
+                onFailure = { updateAction { copy(working = false, message = "Gagal menambah sesi. Coba lagi.") } }
+            )
+        }
+    }
+
+    private fun updateAction(block: SessionActionUiState.() -> SessionActionUiState) {
+        _actionState.value = _actionState.value.block()
     }
 }
 

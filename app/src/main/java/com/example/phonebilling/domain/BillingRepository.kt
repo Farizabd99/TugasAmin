@@ -1,7 +1,7 @@
 package com.example.phonebilling.domain
 
 import android.os.Build
-import com.example.phonebilling.data.local.AppSettings
+import com.example.phonebilling.data.local.BillingSettings
 import com.example.phonebilling.data.local.dao.BillingLogDao
 import com.example.phonebilling.data.local.dao.DeviceDao
 import com.example.phonebilling.data.local.dao.OperatorDao
@@ -19,7 +19,7 @@ import com.example.phonebilling.data.local.entity.TariffEntity
 import com.example.phonebilling.data.remote.BillingLogDto
 import com.example.phonebilling.data.remote.DeviceDto
 import com.example.phonebilling.data.remote.ExtendSessionRequest
-import com.example.phonebilling.data.remote.LocalServerApiFactory
+import com.example.phonebilling.data.remote.BillingApiProvider
 import com.example.phonebilling.data.remote.RegisterDeviceRequest
 import com.example.phonebilling.data.remote.SessionDto
 import com.example.phonebilling.data.remote.StartSessionRequest
@@ -33,8 +33,8 @@ import kotlinx.coroutines.flow.first
 
 @Singleton
 class BillingRepository @Inject constructor(
-    private val settings: AppSettings,
-    private val apiFactory: LocalServerApiFactory,
+    private val settings: BillingSettings,
+    private val apiFactory: BillingApiProvider,
     private val deviceDao: DeviceDao,
     private val sessionDao: SessionDao,
     private val tariffDao: TariffDao,
@@ -108,10 +108,28 @@ class BillingRepository @Inject constructor(
         return runCatching {
             val status = api(baseUrl).getDeviceStatus(deviceId).data
             if (status != null) {
-                deviceDao.getDevice(deviceId)?.let {
-                    deviceDao.upsert(it.copy(status = status.status, lastSeenAt = now()))
+                val timestamp = now()
+                val current = deviceDao.getDevice(deviceId)
+                deviceDao.upsert(
+                    current?.copy(status = status.status, lastSeenAt = timestamp)
+                        ?: DeviceEntity(
+                            deviceId = status.deviceId,
+                            displayName = status.deviceId,
+                            model = Build.MODEL ?: "Android",
+                            mode = DeviceMode.CLIENT,
+                            status = status.status,
+                            serverBaseUrl = baseUrl,
+                            lastSeenAt = timestamp,
+                            createdAt = timestamp
+                        )
+                )
+                val activeSession = status.activeSession
+                if (status.status == DeviceStatus.ACTIVE && activeSession != null) {
+                    stopOtherActiveSessionsForDevice(deviceId, activeSession.sessionId, timestamp)
+                    sessionDao.upsert(activeSession.toEntity(synced = true))
+                } else {
+                    clearActiveSessionsForDevice(deviceId, status.status, timestamp)
                 }
-                status.activeSession?.let { sessionDao.upsert(it.toEntity(synced = true)) }
             }
         }
     }
@@ -120,67 +138,39 @@ class BillingRepository @Inject constructor(
         deviceId: String,
         tariff: TariffEntity,
         operatorId: String
-    ): SessionEntity {
-        val now = now()
-        stopActiveSessionsForDevice(deviceId, now)
-        val session = SessionEntity(
-            sessionId = UUID.randomUUID().toString(),
-            deviceId = deviceId,
-            tariffId = tariff.tariffId,
-            operatorId = operatorId,
-            status = SessionStatus.ACTIVE,
-            startedAt = now,
-            endsAt = now + tariff.minutes.minutesToMillis(),
-            stoppedAt = null,
-            extendedMinutes = 0,
-            priceCents = tariff.priceCents,
-            synced = false
-        )
+    ): Result<SessionEntity> = runCatching {
+        val remote = api(settings.serverBaseUrl.first()).startSession(
+                StartSessionRequest(deviceId, tariff.tariffId, operatorId, tariff.minutes, tariff.priceCents)
+            ).data ?: error("Server tidak mengembalikan sesi")
+        val timestamp = now()
+        stopOtherActiveSessionsForDevice(deviceId, remote.sessionId, timestamp)
+        val session = remote.toEntity(synced = true)
         sessionDao.upsert(session)
         updateDeviceStatus(deviceId, DeviceStatus.ACTIVE)
         addLog(session, BillingEvent.SESSION_STARTED, tariff.priceCents, "Memulai ${tariff.name}")
-
-        runCatching {
-            api(settings.serverBaseUrl.first()).startSession(
-                StartSessionRequest(deviceId, tariff.tariffId, operatorId, tariff.minutes, tariff.priceCents)
-            ).data
-        }.getOrNull()?.let {
-            sessionDao.upsert(it.toEntity(synced = true))
-        }
-        return session
+        session
     }
 
-    suspend fun stopSession(session: SessionEntity): SessionEntity {
-        val stoppedAt = now()
-        stopActiveSessionsForDevice(session.deviceId, stoppedAt)
-        val updated = session.copy(
-            status = SessionStatus.STOPPED,
-            stoppedAt = stoppedAt,
-            synced = false
-        )
+    suspend fun stopSession(session: SessionEntity): Result<SessionEntity> = runCatching {
+        val remote = api(settings.serverBaseUrl.first()).stopSession(session.sessionId).data
+        val stoppedAt = remote?.stoppedAt ?: now()
+        val updated = remote?.toEntity(synced = true)
+            ?: session.copy(status = SessionStatus.STOPPED, stoppedAt = stoppedAt, synced = true)
         sessionDao.upsert(updated)
         updateDeviceStatus(session.deviceId, DeviceStatus.WAITING)
         addLog(updated, BillingEvent.SESSION_STOPPED, 0, "Dihentikan manual")
-        runCatching { api(settings.serverBaseUrl.first()).stopSession(session.sessionId) }
-        return updated
+        updated
     }
 
-    suspend fun extendSession(session: SessionEntity, minutes: Int, priceCents: Long): SessionEntity {
-        val updated = session.copy(
-            endsAt = session.endsAt + minutes.minutesToMillis(),
-            extendedMinutes = session.extendedMinutes + minutes,
-            priceCents = session.priceCents + priceCents,
-            synced = false
-        )
+    suspend fun extendSession(session: SessionEntity, minutes: Int, priceCents: Long): Result<SessionEntity> = runCatching {
+        val remote = api(settings.serverBaseUrl.first()).extendSession(
+            session.sessionId,
+            ExtendSessionRequest(minutes, priceCents)
+        ).data ?: error("Server tidak mengembalikan sesi")
+        val updated = remote.toEntity(synced = true)
         sessionDao.upsert(updated)
         addLog(updated, BillingEvent.SESSION_EXTENDED, priceCents, "Ditambah $minutes menit")
-        runCatching {
-            api(settings.serverBaseUrl.first()).extendSession(
-                session.sessionId,
-                ExtendSessionRequest(minutes, priceCents)
-            )
-        }
-        return updated
+        updated
     }
 
     suspend fun expireSession(session: SessionEntity): SessionEntity {
@@ -211,16 +201,26 @@ class BillingRepository @Inject constructor(
         val baseUrl = settings.serverBaseUrl.first()
         api(baseUrl).getDevices().data.orEmpty().forEach {
             deviceDao.upsert(it.toEntity(baseUrl))
-            if (it.status != DeviceStatus.ACTIVE) {
-                stopActiveSessionsForDevice(it.deviceId, now())
-            }
+            clearActiveSessionsForDevice(it.deviceId, it.status, now())
         }
         syncPendingLogs().getOrThrow()
     }
 
-    private suspend fun stopActiveSessionsForDevice(deviceId: String, stoppedAt: Long) {
+    private suspend fun clearActiveSessionsForDevice(deviceId: String, status: DeviceStatus, stoppedAt: Long) {
+        if (status == DeviceStatus.ACTIVE) return
+        val sessionStatus = when (status) {
+            DeviceStatus.EXPIRED -> SessionStatus.EXPIRED
+            DeviceStatus.WAITING, DeviceStatus.OFFLINE -> SessionStatus.STOPPED
+            DeviceStatus.ACTIVE -> SessionStatus.ACTIVE
+        }
         sessionDao.getActiveSessionsForDevice(deviceId).forEach {
-            sessionDao.upsert(it.copy(status = SessionStatus.STOPPED, stoppedAt = stoppedAt, synced = false))
+            sessionDao.upsert(it.copy(status = sessionStatus, stoppedAt = stoppedAt, synced = true))
+        }
+    }
+
+    private suspend fun stopOtherActiveSessionsForDevice(deviceId: String, keepSessionId: String, stoppedAt: Long) {
+        sessionDao.getActiveSessionsForDevice(deviceId).filterNot { it.sessionId == keepSessionId }.forEach {
+            sessionDao.upsert(it.copy(status = SessionStatus.STOPPED, stoppedAt = stoppedAt, synced = true))
         }
     }
 

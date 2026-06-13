@@ -109,9 +109,13 @@ fun OperatorDashboardScreen(
                 Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text("Perangkat aktif", style = MaterialTheme.typography.titleLarge)
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(state.activeSessions) { session ->
-                    SessionRow(session, onClick = { openSession(session.sessionId) })
+            if (state.activeSessions.isEmpty()) {
+                Text("Belum ada sesi aktif.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(state.activeSessions) { session ->
+                        SessionRow(session, onClick = { openSession(session.sessionId) })
+                    }
                 }
             }
         }
@@ -129,8 +133,21 @@ fun DeviceListScreen(
         subtitle = "Ponsel yang terdaftar dan baru terlihat",
         actions = { SecondaryButton("Kembali", onBack) }
     ) {
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(state.devices) { DeviceRow(it) }
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SecondaryButton(
+                if (state.syncing) "Memuat..." else "Segarkan",
+                viewModel::sync,
+                Modifier.fillMaxWidth(),
+                enabled = !state.syncing
+            )
+            state.syncMessage?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            if (state.devices.isEmpty()) {
+                Text("Belum ada perangkat terdaftar.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(state.devices) { DeviceRow(it) }
+                }
+            }
         }
     }
 }
@@ -158,7 +175,7 @@ fun StartSessionScreen(
                 state.devices.forEach {
                     SelectionRow(
                         title = it.displayName,
-                        subtitle = "${it.status.toIndonesian()} - ${it.model}",
+                        subtitle = "${it.status.toIndonesian()} - ${it.model} - ${it.deviceId}",
                         selected = it.deviceId == state.selectedDeviceId,
                         onClick = { viewModel.selectDevice(it.deviceId) }
                     )
@@ -177,7 +194,13 @@ fun StartSessionScreen(
                     )
                 }
             }
-            PrimaryButton("Mulai", viewModel::start, Modifier.fillMaxWidth(), enabled = state.selectedDeviceId != null && state.selectedTariffId != null)
+            state.message?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            PrimaryButton(
+                if (state.starting) "Memulai..." else "Mulai",
+                viewModel::start,
+                Modifier.fillMaxWidth(),
+                enabled = !state.starting && state.selectedDeviceId != null && state.selectedTariffId != null
+            )
         }
     }
 }
@@ -189,6 +212,10 @@ fun ActiveSessionDetailScreen(
     viewModel: SessionDetailViewModel = hiltViewModel()
 ) {
     val session by viewModel.session.collectAsState()
+    val actionState by viewModel.actionState.collectAsState()
+    LaunchedEffect(actionState.lastCompletedSessionId) {
+        if (actionState.lastCompletedSessionId != null) openDashboard()
+    }
     ScreenScaffold(
         title = "Sesi Aktif",
         subtitle = session?.deviceId ?: "Sesi tidak ditemukan",
@@ -202,16 +229,22 @@ fun ActiveSessionDetailScreen(
                 MetricCard("Selesai", it.endsAt.toClock(), Modifier.fillMaxWidth())
                 MetricCard("Sisa Waktu", (it.endsAt - System.currentTimeMillis()).toCountdown(), Modifier.fillMaxWidth())
                 MetricCard("Total", it.priceCents.toRupiah(), Modifier.fillMaxWidth())
+                actionState.message?.let { message ->
+                    Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 if (isActive) {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                        SecondaryButton("Tambah 30 mnt", { viewModel.extend(it) }, Modifier.weight(1f))
+                        SecondaryButton(
+                            if (actionState.working) "Memproses..." else "Tambah 30 mnt",
+                            { viewModel.extend(it) },
+                            Modifier.weight(1f),
+                            enabled = !actionState.working
+                        )
                         PrimaryButton(
-                            "Hentikan",
-                            {
-                                viewModel.stop(it)
-                                openDashboard()
-                            },
-                            Modifier.weight(1f)
+                            if (actionState.working) "Memproses..." else "Hentikan",
+                            { viewModel.stop(it) },
+                            Modifier.weight(1f),
+                            enabled = !actionState.working
                         )
                     }
                 } else {
@@ -233,8 +266,12 @@ fun BillingHistoryScreen(
         subtitle = "Catatan sesi aktif dan selesai",
         actions = { SecondaryButton("Kembali", onBack) }
     ) {
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(state.history) { SessionRow(it, onClick = {}) }
+        if (state.history.isEmpty()) {
+            Text("Belum ada riwayat tagihan.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(state.history) { SessionRow(it, onClick = {}) }
+            }
         }
     }
 }
@@ -271,6 +308,11 @@ private fun DeviceRow(device: DeviceEntity) {
             Text(device.displayName, style = MaterialTheme.typography.titleLarge)
             Text(
                 "${device.status.toIndonesian()} - ${device.mode.toIndonesian()} - ${device.model}",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                device.deviceId,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
