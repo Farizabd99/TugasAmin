@@ -3,6 +3,7 @@ package com.example.phonebilling.ui.client
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.phonebilling.data.local.entity.DeviceMode
+import com.example.phonebilling.data.local.entity.DeviceStatus
 import com.example.phonebilling.data.local.entity.SessionEntity
 import com.example.phonebilling.domain.BillingRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -19,9 +20,12 @@ import kotlinx.coroutines.launch
 
 data class ClientUiState(
     val deviceId: String = "",
+    val status: DeviceStatus = DeviceStatus.WAITING,
     val activeSession: SessionEntity? = null,
     val remainingMillis: Long = 0,
-    val serverOnline: Boolean = true
+    val serverOnline: Boolean = true,
+    val syncing: Boolean = false,
+    val message: String? = null
 )
 
 @HiltViewModel
@@ -31,20 +35,31 @@ class ClientViewModel @Inject constructor(
 ) : ViewModel() {
     private val ticker = MutableStateFlow(System.currentTimeMillis())
     private val serverOnline = MutableStateFlow(true)
+    private val syncing = MutableStateFlow(false)
+    private val message = MutableStateFlow<String?>(null)
 
     val state: StateFlow<ClientUiState> = repository.observeDeviceId()
         .flatMapLatest { deviceId ->
-            combine(
+            val clientData = combine(
                 repository.observeActiveSessionForDevice(deviceId),
-                ticker,
-                serverOnline
-            ) { session, now, online ->
+                repository.observeDevices(),
+                ticker
+            ) { session, devices, now ->
+                val status = devices.firstOrNull { it.deviceId == deviceId }?.status ?: DeviceStatus.WAITING
                 ClientUiState(
                     deviceId = deviceId,
+                    status = status,
                     activeSession = session,
-                    remainingMillis = (session?.endsAt ?: now) - now,
-                    serverOnline = online
+                    remainingMillis = (session?.endsAt ?: now) - now
                 )
+            }
+            combine(
+                clientData,
+                serverOnline,
+                syncing,
+                message
+            ) { data, online, isSyncing, currentMessage ->
+                data.copy(serverOnline = online, syncing = isSyncing, message = currentMessage)
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ClientUiState())
@@ -73,7 +88,15 @@ class ClientViewModel @Inject constructor(
 
     fun syncNow() {
         viewModelScope.launch {
-            serverOnline.value = repository.syncPendingLogs().isSuccess
+            val deviceId = state.value.deviceId
+            if (deviceId.isBlank()) return@launch
+            syncing.value = true
+            message.value = null
+            val result = repository.refreshClientStatus(deviceId)
+            if (result.isSuccess) repository.syncPendingLogs()
+            serverOnline.value = result.isSuccess
+            syncing.value = false
+            message.value = if (result.isSuccess) "Status berhasil diperbarui" else "Gagal memperbarui status"
         }
     }
 

@@ -2,6 +2,10 @@ package com.example.phonebilling.di
 
 import android.content.Context
 import androidx.room.Room
+import com.example.phonebilling.data.local.AppSettings
+import com.example.phonebilling.data.local.BillingSettings
+import com.example.phonebilling.data.remote.BillingApiProvider
+import com.example.phonebilling.data.remote.LocalServerApiFactory
 import com.example.phonebilling.database.AppDatabase
 import dagger.Module
 import dagger.Provides
@@ -31,6 +35,12 @@ object AppModule {
     @Provides fun provideTariffDao(db: AppDatabase) = db.tariffDao()
     @Provides fun provideOperatorDao(db: AppDatabase) = db.operatorDao()
     @Provides fun provideBillingLogDao(db: AppDatabase) = db.billingLogDao()
+
+    @Provides
+    fun provideBillingSettings(settings: AppSettings): BillingSettings = settings
+
+    @Provides
+    fun provideBillingApiProvider(factory: LocalServerApiFactory): BillingApiProvider = factory
 
     @Provides
     @Singleton

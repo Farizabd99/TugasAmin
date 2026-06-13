@@ -14,28 +14,40 @@ Android only allows strong kiosk restrictions when the app is Device Owner or is
 
 ## ADB Provisioning For Test Devices
 
-Use a freshly reset device with no Google account added.
+Use a freshly factory-reset device. Do not add a Google account, Xiaomi account, screen lock, or work profile before Device Owner provisioning.
 
-1. Build and install the debug APK:
+1. Factory reset the phone from Android settings or recovery mode, then boot to the first setup screen.
+
+2. Enable developer options and USB debugging only for provisioning. If the setup wizard blocks this on the target build, use Android Enterprise QR/NFC provisioning instead.
+
+3. Build and install the debug APK:
 
 ```bash
 ./gradlew assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-2. Set Device Owner:
+4. Set Device Owner:
 
 ```bash
 adb shell dpm set-device-owner com.example.phonebilling/.admin.PhoneBillingDeviceAdminReceiver
 ```
 
-3. Launch the app:
+5. Verify ownership:
+
+```bash
+adb shell dumpsys device_policy | grep -i com.example.phonebilling
+```
+
+6. Launch the app:
 
 ```bash
 adb shell monkey -p com.example.phonebilling 1
 ```
 
-4. Open Client Mode from the login screen on client phones.
+7. Open Client Mode from the login screen on client phones.
+
+8. Start a session from the operator device. The client should enter Lock Task Mode for active and expired sessions, then leave Lock Task Mode after the backend reports waiting/stopped.
 
 ## Removing Device Owner During Testing
 
@@ -63,6 +75,7 @@ For production, provision through Android Enterprise:
 - Back navigation can be intercepted inside Compose, but system gestures, status shade, recents, and settings require Device Owner policy.
 - Lock Task Mode must be allowlisted for reliable kiosk behavior.
 - Some OEM Android builds customize kiosk behavior; validate on the exact target device model.
+- Xiaomi/MIUI may add extra permission prompts, battery restrictions, autostart restrictions, or gesture behavior around kiosk mode. Hardware validation on the target MIUI version is required before production rollout.
 
 ## Recommended Production Policy
 

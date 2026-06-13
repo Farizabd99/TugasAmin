@@ -31,7 +31,13 @@ fun ClientWaitingScreen(
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             MetricCard("ID Perangkat", state.deviceId, Modifier.fillMaxWidth())
             MetricCard("Server", if (state.serverOnline) "Terhubung" else "Tidak terhubung, memakai data lokal", Modifier.fillMaxWidth())
-            PrimaryButton("Sinkronkan Sekarang", viewModel::syncNow, Modifier.fillMaxWidth())
+            state.message?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            PrimaryButton(
+                if (state.syncing) "Menyinkronkan..." else "Sinkronkan Sekarang",
+                viewModel::syncNow,
+                Modifier.fillMaxWidth(),
+                enabled = !state.syncing
+            )
         }
     }
 }
@@ -50,7 +56,7 @@ fun ClientActiveSessionScreen(
             kioskController.allowLockTaskIfOwner(it)
             kioskController.start(it)
         }
-        onDispose { }
+        onDispose { activity?.let(kioskController::stop) }
     }
     ScreenScaffold(title = "Sesi Aktif", subtitle = "Pemakaian ponsel sedang dibatasi") {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -75,14 +81,23 @@ fun ClientExpiredScreen(
     val state by viewModel.state.collectAsState()
     BackHandler(enabled = true) { }
     DisposableEffect(activity) {
-        activity?.let { kioskController.start(it) }
-        onDispose { }
+        activity?.let {
+            kioskController.allowLockTaskIfOwner(it)
+            kioskController.start(it)
+        }
+        onDispose { activity?.let(kioskController::stop) }
     }
     ScreenScaffold(title = "Waktu Habis", subtitle = "Silakan hubungi operator untuk bantuan") {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             MetricCard("ID Perangkat", state.deviceId, Modifier.fillMaxWidth())
             MetricCard("Status", if (state.serverOnline) "Tersinkron" else "Menunggu sinkronisasi", Modifier.fillMaxWidth())
-            PrimaryButton("Coba Sinkronkan Lagi", viewModel::syncNow, Modifier.fillMaxWidth())
+            state.message?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            PrimaryButton(
+                if (state.syncing) "Menyinkronkan..." else "Coba Sinkronkan Lagi",
+                viewModel::syncNow,
+                Modifier.fillMaxWidth(),
+                enabled = !state.syncing
+            )
         }
     }
 }

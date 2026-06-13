@@ -26,6 +26,7 @@ import androidx.work.WorkManager
 import com.example.phonebilling.admin.KioskController
 import com.example.phonebilling.core.design.PhoneBillingTheme
 import com.example.phonebilling.core.navigation.Route
+import com.example.phonebilling.data.local.entity.DeviceStatus
 import com.example.phonebilling.ui.client.ClientActiveSessionScreen
 import com.example.phonebilling.ui.client.ClientExpiredScreen
 import com.example.phonebilling.ui.client.ClientViewModel
@@ -85,10 +86,12 @@ private fun PhoneBillingNavHost(kioskController: KioskController) {
     LaunchedEffect(clientState.activeSession, clientState.remainingMillis, currentRoute) {
         if (currentRoute?.startsWith("client/") == true) {
             when {
-                clientState.activeSession != null && clientState.remainingMillis > 0 ->
+                clientState.status == DeviceStatus.ACTIVE && clientState.activeSession != null && clientState.remainingMillis > 0 ->
                     navController.navigate(Route.ClientActive.path) { launchSingleTop = true }
-                clientState.activeSession != null && clientState.remainingMillis <= 0 ->
+                clientState.status == DeviceStatus.EXPIRED || clientState.activeSession != null && clientState.remainingMillis <= 0 ->
                     navController.navigate(Route.ClientExpired.path) { launchSingleTop = true }
+                currentRoute != Route.ClientWaiting.path ->
+                    navController.navigate(Route.ClientWaiting.path) { launchSingleTop = true }
             }
         }
     }
