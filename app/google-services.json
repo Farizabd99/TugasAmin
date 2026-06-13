@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "952275845812",
+    "project_id": "wartel-195f3",
+    "storage_bucket": "wartel-195f3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:952275845812:android:87e750af2cb280378dcde1",
+        "android_client_info": {
+          "package_name": "com.amin.wartel"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBNvuxEsOvjEhpu1Pqa35LZVgcXlgt-NUM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
