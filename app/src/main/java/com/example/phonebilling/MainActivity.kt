@@ -82,16 +82,34 @@ private fun PhoneBillingNavHost(kioskController: KioskController) {
     val clientState by clientViewModel.state.collectAsState()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val activity = context as? android.app.Activity
+    LaunchedEffect(currentRoute) {
+        activity?.let { act ->
+            if (currentRoute?.startsWith("client/") == true) {
+                kioskController.start(act)
+            } else {
+                kioskController.stop(act)
+            }
+        }
+    }
 
     LaunchedEffect(clientState.activeSession, clientState.remainingMillis, currentRoute) {
         if (currentRoute?.startsWith("client/") == true) {
             when {
-                clientState.status == DeviceStatus.ACTIVE && clientState.activeSession != null && clientState.remainingMillis > 0 ->
-                    navController.navigate(Route.ClientActive.path) { launchSingleTop = true }
-                clientState.status == DeviceStatus.EXPIRED || clientState.activeSession != null && clientState.remainingMillis <= 0 ->
-                    navController.navigate(Route.ClientExpired.path) { launchSingleTop = true }
-                currentRoute != Route.ClientWaiting.path ->
+                clientState.status == DeviceStatus.ACTIVE && clientState.activeSession != null && clientState.remainingMillis > 0 -> {
+                    if (currentRoute != Route.ClientActive.path) {
+                        navController.navigate(Route.ClientActive.path) { launchSingleTop = true }
+                    }
+                }
+                clientState.status == DeviceStatus.EXPIRED || clientState.activeSession != null && clientState.remainingMillis <= 0 -> {
+                    if (currentRoute != Route.ClientExpired.path) {
+                        navController.navigate(Route.ClientExpired.path) { launchSingleTop = true }
+                    }
+                }
+                currentRoute != Route.ClientWaiting.path -> {
                     navController.navigate(Route.ClientWaiting.path) { launchSingleTop = true }
+                }
             }
         }
     }
@@ -153,7 +171,7 @@ private fun PhoneBillingNavHost(kioskController: KioskController) {
         composable(Route.Settings.path) {
             SettingsScreen(onBack = { navController.popBackStack() })
         }
-        composable(Route.ClientWaiting.path) { ClientWaitingScreen(clientViewModel) }
+        composable(Route.ClientWaiting.path) { ClientWaitingScreen(kioskController, clientViewModel) }
         composable(Route.ClientActive.path) {
             ClientActiveSessionScreen(kioskController = kioskController, viewModel = clientViewModel)
         }

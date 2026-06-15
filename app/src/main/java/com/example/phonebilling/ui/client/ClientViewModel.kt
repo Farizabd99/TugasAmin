@@ -31,6 +31,7 @@ data class ClientUiState(
 @HiltViewModel
 @OptIn(ExperimentalCoroutinesApi::class)
 class ClientViewModel @Inject constructor(
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
     private val repository: BillingRepository
 ) : ViewModel() {
     private val ticker = MutableStateFlow(System.currentTimeMillis())
@@ -76,6 +77,22 @@ class ClientViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            var lastStatus: DeviceStatus? = null
+            repository.observeDeviceId().collect { deviceId ->
+                if (deviceId.isNotBlank()) {
+                    repository.observeDevices().collect { devices ->
+                        val status = devices.firstOrNull { it.deviceId == deviceId }?.status
+                        android.util.Log.d("ClientViewModel", "Status change collection: deviceId=$deviceId, lastStatus=$lastStatus, currentStatus=$status")
+                        if (lastStatus == DeviceStatus.ACTIVE && (status == DeviceStatus.WAITING || status == DeviceStatus.EXPIRED)) {
+                            android.util.Log.d("ClientViewModel", "Transition from ACTIVE detected. Bringing app to foreground.")
+                            bringAppToForeground()
+                        }
+                        lastStatus = status
+                    }
+                }
+            }
+        }
+        viewModelScope.launch {
             while (true) {
                 ticker.value = System.currentTimeMillis()
                 state.value.activeSession?.let {
@@ -83,6 +100,15 @@ class ClientViewModel @Inject constructor(
                 }
                 delay(1_000)
             }
+        }
+    }
+
+    private fun bringAppToForeground() {
+        runCatching {
+            val intent = android.content.Intent(context, com.example.phonebilling.MainActivity::class.java).apply {
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            context.startActivity(intent)
         }
     }
 

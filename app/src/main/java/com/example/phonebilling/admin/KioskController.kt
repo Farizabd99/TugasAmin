@@ -12,13 +12,45 @@ class KioskController @Inject constructor() {
         return dpm.isDeviceOwnerApp(context.packageName)
     }
 
-    fun allowLockTaskIfOwner(context: Context) {
+    fun allowLockTaskIfOwner(context: Context, sessionActive: Boolean) {
         val dpm = context.getSystemService(DevicePolicyManager::class.java)
         if (!dpm.isDeviceOwnerApp(context.packageName)) return
         val admin = ComponentName(context, PhoneBillingDeviceAdminReceiver::class.java)
-        dpm.setLockTaskPackages(admin, arrayOf(context.packageName))
-        dpm.setStatusBarDisabled(admin, true)
-        dpm.setKeyguardDisabled(admin, true)
+        
+        if (sessionActive) {
+            // Sesi aktif: Izinkan aplikasi kita + WhatsApp + Launcher Default, serta aktifkan tombol Home, Overview/Recents, dan status info
+            val launcherPackages = getLauncherPackages(context)
+            val allowedPackagesList = mutableListOf(context.packageName, "com.whatsapp")
+            allowedPackagesList.addAll(launcherPackages)
+            
+            dpm.setLockTaskPackages(admin, allowedPackagesList.toTypedArray())
+            
+            val features = DevicePolicyManager.LOCK_TASK_FEATURE_HOME or
+                    DevicePolicyManager.LOCK_TASK_FEATURE_OVERVIEW or
+                    DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO
+            dpm.setLockTaskFeatures(admin, features)
+            
+            dpm.setStatusBarDisabled(admin, false)
+            dpm.setKeyguardDisabled(admin, true)
+        } else {
+            // Sesi tidak aktif: Kunci total ke aplikasi kita saja
+            dpm.setLockTaskPackages(admin, arrayOf(context.packageName))
+            dpm.setLockTaskFeatures(admin, DevicePolicyManager.LOCK_TASK_FEATURE_NONE)
+            dpm.setStatusBarDisabled(admin, true)
+            dpm.setKeyguardDisabled(admin, true)
+        }
+    }
+
+    private fun getLauncherPackages(context: Context): List<String> {
+        val intent = android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
+            addCategory(android.content.Intent.CATEGORY_HOME)
+        }
+        val resolveInfo = context.packageManager.resolveActivity(
+            intent,
+            0
+        )
+        val defaultLauncher = resolveInfo?.activityInfo?.packageName
+        return if (defaultLauncher != null) listOf(defaultLauncher) else emptyList()
     }
 
     fun start(activity: Activity) {

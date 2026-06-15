@@ -1,6 +1,7 @@
 package com.example.phonebilling.ui.client
 
 import android.app.Activity
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -10,6 +11,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -24,9 +26,18 @@ import com.example.phonebilling.ui.common.toCountdown
 
 @Composable
 fun ClientWaitingScreen(
+    kioskController: KioskController,
     viewModel: ClientViewModel = hiltViewModel()
 ) {
+    val context = LocalContext.current
+    val activity = context as? Activity
     val state by viewModel.state.collectAsState()
+    BackHandler(enabled = true) { }
+    LaunchedEffect(activity) {
+        activity?.let {
+            kioskController.allowLockTaskIfOwner(it, sessionActive = false)
+        }
+    }
     ScreenScaffold(title = "Menunggu", subtitle = "Perangkat siap diaktifkan oleh operator") {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             MetricCard("ID Perangkat", state.deviceId, Modifier.fillMaxWidth())
@@ -51,12 +62,10 @@ fun ClientActiveSessionScreen(
     val activity = context as? Activity
     val state by viewModel.state.collectAsState()
     BackHandler(enabled = true) { }
-    DisposableEffect(activity) {
+    LaunchedEffect(activity) {
         activity?.let {
-            kioskController.allowLockTaskIfOwner(it)
-            kioskController.start(it)
+            kioskController.allowLockTaskIfOwner(it, sessionActive = true)
         }
-        onDispose { activity?.let(kioskController::stop) }
     }
     ScreenScaffold(title = "Sesi Aktif", subtitle = "Pemakaian ponsel sedang dibatasi") {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -67,6 +76,19 @@ fun ClientActiveSessionScreen(
             )
             MetricCard("ID Perangkat", state.deviceId, Modifier.fillMaxWidth())
             MetricCard("Sisa Waktu", state.remainingMillis.toCountdown(), Modifier.fillMaxWidth())
+            
+            PrimaryButton(
+                text = "Buka WhatsApp",
+                onClick = {
+                    val launchIntent = context.packageManager.getLaunchIntentForPackage("com.whatsapp")
+                    if (launchIntent != null) {
+                        context.startActivity(launchIntent)
+                    } else {
+                        Toast.makeText(context, "WhatsApp tidak terinstall di perangkat ini", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }
@@ -80,12 +102,10 @@ fun ClientExpiredScreen(
     val activity = context as? Activity
     val state by viewModel.state.collectAsState()
     BackHandler(enabled = true) { }
-    DisposableEffect(activity) {
+    LaunchedEffect(activity) {
         activity?.let {
-            kioskController.allowLockTaskIfOwner(it)
-            kioskController.start(it)
+            kioskController.allowLockTaskIfOwner(it, sessionActive = false)
         }
-        onDispose { activity?.let(kioskController::stop) }
     }
     ScreenScaffold(title = "Waktu Habis", subtitle = "Silakan hubungi operator untuk bantuan") {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
