@@ -18,19 +18,12 @@ class KioskController @Inject constructor() {
         val admin = ComponentName(context, PhoneBillingDeviceAdminReceiver::class.java)
         
         if (sessionActive) {
-            // Sesi aktif: Izinkan aplikasi kita + WhatsApp + Launcher Default, serta aktifkan tombol Home, Overview/Recents, dan status info
-            val launcherPackages = getLauncherPackages(context)
-            val allowedPackagesList = mutableListOf(context.packageName, "com.whatsapp")
-            allowedPackagesList.addAll(launcherPackages)
+            // Sesi aktif: Hanya izinkan aplikasi kita + WhatsApp
+            val allowedPackagesList = arrayOf(context.packageName, "com.whatsapp")
+            dpm.setLockTaskPackages(admin, allowedPackagesList)
             
-            dpm.setLockTaskPackages(admin, allowedPackagesList.toTypedArray())
-            
-            val features = DevicePolicyManager.LOCK_TASK_FEATURE_HOME or
-                    DevicePolicyManager.LOCK_TASK_FEATURE_OVERVIEW or
-                    DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO
-            dpm.setLockTaskFeatures(admin, features)
-            
-            dpm.setStatusBarDisabled(admin, false)
+            dpm.setLockTaskFeatures(admin, DevicePolicyManager.LOCK_TASK_FEATURE_NONE)
+            dpm.setStatusBarDisabled(admin, true)
             dpm.setKeyguardDisabled(admin, true)
         } else {
             // Sesi tidak aktif: Kunci total ke aplikasi kita saja
@@ -59,5 +52,17 @@ class KioskController @Inject constructor() {
 
     fun stop(activity: Activity) {
         runCatching { activity.stopLockTask() }
+        disableKioskMode(activity)
+    }
+
+    fun disableKioskMode(context: Context) {
+        val dpm = context.getSystemService(DevicePolicyManager::class.java)
+        if (!dpm.isDeviceOwnerApp(context.packageName)) return
+        val admin = ComponentName(context, PhoneBillingDeviceAdminReceiver::class.java)
+        runCatching {
+            dpm.setLockTaskPackages(admin, arrayOf())
+            dpm.setStatusBarDisabled(admin, false)
+            dpm.setKeyguardDisabled(admin, false)
+        }
     }
 }
