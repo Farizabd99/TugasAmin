@@ -12,10 +12,27 @@ class KioskController @Inject constructor() {
         return dpm.isDeviceOwnerApp(context.packageName)
     }
 
+    fun grantRequiredPermissions(context: Context) {
+        val dpm = context.getSystemService(DevicePolicyManager::class.java)
+        if (!dpm.isDeviceOwnerApp(context.packageName)) return
+        val admin = ComponentName(context, PhoneBillingDeviceAdminReceiver::class.java)
+        val permissions = arrayOf(
+            "android.permission.READ_CONTACTS",
+            "android.permission.WRITE_CONTACTS",
+            "android.permission.GET_ACCOUNTS"
+        )
+        for (permission in permissions) {
+            runCatching {
+                dpm.setPermissionGrantState(admin, context.packageName, permission, DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED)
+            }
+        }
+    }
+
     fun allowLockTaskIfOwner(context: Context, sessionActive: Boolean) {
         val dpm = context.getSystemService(DevicePolicyManager::class.java)
         if (!dpm.isDeviceOwnerApp(context.packageName)) return
         val admin = ComponentName(context, PhoneBillingDeviceAdminReceiver::class.java)
+        grantRequiredPermissions(context)
         
         if (sessionActive) {
             // Sesi aktif: Hanya izinkan aplikasi kita + WhatsApp

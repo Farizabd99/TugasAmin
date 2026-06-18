@@ -84,9 +84,11 @@ private fun PhoneBillingNavHost(kioskController: KioskController) {
     val currentRoute = backStack?.destination?.route
     val context = androidx.compose.ui.platform.LocalContext.current
     val activity = context as? android.app.Activity
-    LaunchedEffect(currentRoute) {
+    LaunchedEffect(currentRoute, clientState.activeSession, clientState.remainingMillis) {
         activity?.let { act ->
             if (currentRoute?.startsWith("client/") == true) {
+                val isActive = clientState.status == DeviceStatus.ACTIVE && clientState.activeSession != null && clientState.remainingMillis > 0
+                kioskController.allowLockTaskIfOwner(act, sessionActive = isActive)
                 kioskController.start(act)
             } else {
                 kioskController.stop(act)

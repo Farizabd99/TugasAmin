@@ -7,29 +7,48 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.phonebilling.admin.KioskController
+import com.example.phonebilling.calling.WhatsAppCallHelper
 import com.example.phonebilling.ui.common.MetricCard
 import com.example.phonebilling.ui.common.PrimaryButton
 import com.example.phonebilling.ui.common.SecondaryButton
 import com.example.phonebilling.ui.common.ScreenScaffold
 import com.example.phonebilling.ui.common.toCountdown
+
+// ─────────────────────────────────────────────────────────────
+// Langkah pemilihan pada sesi aktif klien
+// ─────────────────────────────────────────────────────────────
+
+enum class ActiveSessionStep {
+    SELECT_CALL_TYPE,
+    INPUT_NUMBER
+}
+
+// ─────────────────────────────────────────────────────────────
+// Layar Menunggu (Waiting Screen)
+// ─────────────────────────────────────────────────────────────
 
 @Composable
 fun ClientWaitingScreen(
@@ -65,40 +84,9 @@ fun ClientWaitingScreen(
     }
 }
 
-enum class ActiveSessionStep {
-    SELECT_CALL_TYPE,
-    INPUT_NUMBER
-}
-
-fun formatToWhatsAppNumber(number: String): String {
-    val clean = number.filter { it.isDigit() }
-    return when {
-        clean.startsWith("0") -> "62" + clean.substring(1)
-        clean.startsWith("62") -> clean
-        else -> "62" + clean
-    }
-}
-
-fun launchWhatsAppCall(context: android.content.Context, number: String, isVideo: Boolean) {
-    val guideMessage = if (isVideo) {
-        "Membuka WhatsApp... Silakan ketuk ikon Video Call (kamera) di pojok kanan atas."
-    } else {
-        "Membuka WhatsApp... Silakan ketuk ikon Telepon di pojok kanan atas."
-    }
-    Toast.makeText(context, guideMessage, Toast.LENGTH_LONG).show()
-    
-    runCatching {
-        val url = "https://wa.me/$number"
-        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-            data = android.net.Uri.parse(url)
-            `package` = "com.whatsapp"
-            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        context.startActivity(intent)
-    }.onFailure {
-        Toast.makeText(context, "Gagal membuka WhatsApp. Pastikan WhatsApp terinstall.", Toast.LENGTH_LONG).show()
-    }
-}
+// ─────────────────────────────────────────────────────────────
+// Layar Sesi Aktif (Active Session Screen)
+// ─────────────────────────────────────────────────────────────
 
 @Composable
 fun ClientActiveSessionScreen(
@@ -108,34 +96,65 @@ fun ClientActiveSessionScreen(
     val context = LocalContext.current
     val activity = context as? Activity
     val state by viewModel.state.collectAsState()
-    
+    val coroutineScope = rememberCoroutineScope()
+
+    // Instance WhatsAppCallHelper untuk menangani panggilan
+    val callHelper = remember { WhatsAppCallHelper() }
+
     var currentStep by remember { mutableStateOf(ActiveSessionStep.SELECT_CALL_TYPE) }
     var selectedCallType by remember { mutableStateOf("") }
     var phoneNumber by remember { mutableStateOf("") }
-    
+    var isInitiatingCall by remember { mutableStateOf(false) }
+
     BackHandler(enabled = true) {
         if (currentStep == ActiveSessionStep.INPUT_NUMBER) {
             currentStep = ActiveSessionStep.SELECT_CALL_TYPE
         }
     }
-    
+
     LaunchedEffect(activity) {
         activity?.let {
             kioskController.allowLockTaskIfOwner(it, sessionActive = true)
         }
     }
-    
+
+    // Dialog loading saat panggilan sedang dihubungkan
+    if (isInitiatingCall) {
+        Dialog(onDismissRequest = {}) {
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 8.dp,
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    CircularProgressIndicator()
+                    Text(
+                        text = "Menghubungkan panggilan...",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+    }
+
     ScreenScaffold(
-        title = "Sesi Aktif", 
+        title = "Sesi Aktif",
         subtitle = "Sisa Waktu: ${state.remainingMillis.toCountdown()}"
     ) {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (currentStep == ActiveSessionStep.SELECT_CALL_TYPE) {
+                // ─── Langkah 1: Pilih Jenis Panggilan ───
                 Text(
                     text = "Pilih Jenis Panggilan",
                     style = MaterialTheme.typography.titleLarge
                 )
-                
+
                 PrimaryButton(
                     text = "Panggilan Suara (Voice Call)",
                     onClick = {
@@ -144,7 +163,7 @@ fun ClientActiveSessionScreen(
                     },
                     modifier = Modifier.fillMaxWidth()
                 )
-                
+
                 PrimaryButton(
                     text = "Panggilan Video (Video Call)",
                     onClick = {
@@ -154,12 +173,13 @@ fun ClientActiveSessionScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
             } else {
+                // ─── Langkah 2: Masukkan Nomor & Mulai Panggilan ───
                 Text(
                     text = if (selectedCallType == "VOICE") "Telepon Suara" else "Panggilan Video",
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.primary
                 )
-                
+
                 OutlinedTextField(
                     value = phoneNumber,
                     onValueChange = { input ->
@@ -173,13 +193,19 @@ fun ClientActiveSessionScreen(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
-                
+
                 PrimaryButton(
                     text = if (selectedCallType == "VOICE") "Mulai Telepon" else "Mulai Video Call",
                     onClick = {
                         if (phoneNumber.isNotBlank()) {
-                            val formattedNumber = formatToWhatsAppNumber(phoneNumber)
-                            launchWhatsAppCall(context, formattedNumber, selectedCallType == "VIDEO")
+                            val formattedNumber = callHelper.formatToInternational(phoneNumber)
+                            callHelper.launchCall(
+                                context = context,
+                                phoneNumber = formattedNumber,
+                                isVideo = selectedCallType == "VIDEO",
+                                onLoadingStateChanged = { isInitiatingCall = it },
+                                coroutineScope = coroutineScope
+                            )
                         } else {
                             Toast.makeText(context, "Nomor tidak boleh kosong", Toast.LENGTH_SHORT).show()
                         }
@@ -187,7 +213,7 @@ fun ClientActiveSessionScreen(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = phoneNumber.isNotBlank()
                 )
-                
+
                 SecondaryButton(
                     text = "Kembali",
                     onClick = { currentStep = ActiveSessionStep.SELECT_CALL_TYPE },
@@ -197,6 +223,10 @@ fun ClientActiveSessionScreen(
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────
+// Layar Waktu Habis (Expired Screen)
+// ─────────────────────────────────────────────────────────────
 
 @Composable
 fun ClientExpiredScreen(
