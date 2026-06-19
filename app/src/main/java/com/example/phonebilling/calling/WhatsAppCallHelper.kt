@@ -173,7 +173,13 @@ class WhatsAppCallHelper @Inject constructor() {
 
         for (account in accounts) {
             if (account.type == WHATSAPP_ACCOUNT_TYPE) {
-                Log.d(TAG, "Found WhatsApp account: ${account.name}. Triggering sync...")
+                Log.d(TAG, "Found WhatsApp account: ${account.name}. Enabling and triggering sync...")
+                try {
+                    ContentResolver.setIsSyncable(account, ContactsContract.AUTHORITY, 1)
+                    ContentResolver.setSyncAutomatically(account, ContactsContract.AUTHORITY, true)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to enable sync automatically", e)
+                }
                 val extras = Bundle().apply {
                     putBoolean(ContentResolver.SYNC_EXTRAS_MANUAL, true)
                     putBoolean(ContentResolver.SYNC_EXTRAS_EXPEDITED, true)
@@ -292,142 +298,64 @@ class WhatsAppCallHelper @Inject constructor() {
     ) {
         val callType = if (isVideo) "VIDEO" else "VOICE"
         Log.d(TAG, "═══════════════════════════════════════════════")
-        Log.d(TAG, "Starting $callType call to $phoneNumber")
+        Log.d(TAG, "Starting accessibility-based $callType call to $phoneNumber")
         Log.d(TAG, "═══════════════════════════════════════════════")
 
         coroutineScope.launch(Dispatchers.IO) {
-            withContext(Dispatchers.Main) { onLoadingStateChanged(true) }
-
-            var tempContactUri: Uri? = null
-            var callIntentStarted = false
+            withContext(Dispatchers.Main) {
+                // Tampilkan overlay loading layar penuh
+                OverlayService.start(context)
+                onLoadingStateChanged(true)
+            }
 
             try {
-                // ─── Langkah 1: Buat Kontak Sementara ───
-                Log.d(TAG, "[Step 1/5] Inserting temporary contact...")
-                tempContactUri = insertTemporaryContact(context, phoneNumber)
-
-                if (tempContactUri == null) {
-                    Log.e(TAG, "[Step 1/5] FAILED: Could not insert temporary contact")
-                    return@launch
-                }
-                Log.d(TAG, "[Step 1/5] OK: Contact created at $tempContactUri")
-
-                // ─── Langkah 2: Trigger Sinkronisasi WhatsApp ───
-                Log.d(TAG, "[Step 2/5] Requesting WhatsApp sync...")
-                val syncTriggered = requestSync(context)
-                if (!syncTriggered) {
-                    Log.w(TAG, "[Step 2/5] WARNING: No WhatsApp account found, proceeding anyway...")
-                } else {
-                    Log.d(TAG, "[Step 2/5] OK: Sync triggered")
+                // Set parameter di Accessibility Service agar siap memencet tombol
+                WartelAccessibilityService.targetCallType = callType
+                
+                // Daftarkan callback untuk menghilangkan overlay setelah tombol berhasil ditekan
+                WartelAccessibilityService.onCallTriggered = {
+                    coroutineScope.launch(Dispatchers.Main) {
+                        // Tunggu 3 detik agar panggilan WhatsApp benar-benar termulai secara visual,
+                        // baru kemudian hilangkan overlay untuk menampilkan UI panggilan WhatsApp.
+                        delay(3000)
+                        OverlayService.stop(context)
+                        onLoadingStateChanged(false)
+                    }
                 }
 
-                // ─── Langkah 3: Poll untuk Data ID VoIP ───
-                Log.d(TAG, "[Step 3/5] Polling for VoIP data ID (max ${SYNC_TIMEOUT_MS / 1000}s)...")
-                for (i in 1..MAX_POLL_ITERATIONS) {
-                    delay(POLL_INTERVAL_MS)
-                    val dataId = findVoipDataId(context, phoneNumber, isVideo)
-
-                    if (dataId != null) {
-                        Log.d(TAG, "[Step 3/5] OK: Found dataId=$dataId after ${i * POLL_INTERVAL_MS}ms")
-
-                        // ─── Langkah 4: Luncurkan Intent VoIP ───
-                        val mimeType = if (isVideo) MIME_VIDEO_CALL else MIME_VOIP_CALL
-                        Log.d(TAG, "[Step 4/5] Launching direct $callType intent...")
-
-                        val intent = Intent(Intent.ACTION_VIEW).apply {
-                            setDataAndType(
-                                Uri.parse("content://com.android.contacts/data/$dataId"),
-                                mimeType
-                            )
-                            `package` = WHATSAPP_PACKAGE
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        }
-
+                // Tambahkan timeout pengaman jika service tidak berhasil mengklik dalam 8 detik
+                launch {
+                    delay(8000)
+                    if (WartelAccessibilityService.targetCallType != null) {
+                        Log.w(TAG, "Accessibility timeout reached! Stopping overlay.")
+                        WartelAccessibilityService.targetCallType = null
                         withContext(Dispatchers.Main) {
-                            context.startActivity(intent)
+                            OverlayService.stop(context)
+                            onLoadingStateChanged(false)
+                            Toast.makeText(context, "Gagal menyambungkan otomatis. Silakan coba lagi.", Toast.LENGTH_SHORT).show()
                         }
-                        callIntentStarted = true
-                        Log.d(TAG, "[Step 4/5] OK: Direct call intent launched!")
-                        break
-                    }
-
-                    if (i % 4 == 0) {
-                        Log.d(TAG, "[Step 3/5] Still polling... (${i * POLL_INTERVAL_MS / 1000}s elapsed)")
                     }
                 }
 
-                if (!callIntentStarted) {
-                    Log.w(TAG, "[Step 3/5] TIMEOUT: Could not find VoIP data ID after ${SYNC_TIMEOUT_MS / 1000}s")
+                // Buka chat room WhatsApp menggunakan deep link (ini akan menutupi aplikasi kita,
+                // tapi chat room WhatsApp akan tertutupi oleh overlay dari OverlayService)
+                val url = "https://wa.me/$phoneNumber"
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                    `package` = WHATSAPP_PACKAGE
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
-            } catch (e: android.content.ActivityNotFoundException) {
-                Log.e(TAG, "WhatsApp is not installed or VoIP activity not found", e)
-            } catch (e: SecurityException) {
-                Log.e(TAG, "Missing required permissions (READ_CONTACTS / WRITE_CONTACTS)", e)
-            } catch (e: Exception) {
-                Log.e(TAG, "Unexpected error during call launch", e)
-            } finally {
-                // ─── Langkah 5: Bersihkan Kontak Sementara ───
-                if (tempContactUri != null) {
-                    Log.d(TAG, "[Step 5/5] Cleaning up temporary contact...")
-                    deleteTemporaryContact(context, tempContactUri)
-                    Log.d(TAG, "[Step 5/5] OK: Cleanup complete")
-                }
-
+                
                 withContext(Dispatchers.Main) {
-                    onLoadingStateChanged(false)
-
-                    // Fallback ke deep link wa.me jika panggilan langsung gagal
-                    if (!callIntentStarted) {
-                        Log.w(TAG, "Direct call failed. Falling back to wa.me deep link...")
-                        launchFallbackDeepLink(context, phoneNumber, isVideo)
-                    }
+                    context.startActivity(intent)
                 }
 
-                Log.d(TAG, "═══════════════════════════════════════════════")
-                Log.d(TAG, "$callType call flow completed. Success=$callIntentStarted")
-                Log.d(TAG, "═══════════════════════════════════════════════")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error starting accessibility call flow", e)
+                withContext(Dispatchers.Main) {
+                    OverlayService.stop(context)
+                    onLoadingStateChanged(false)
+                }
             }
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // 6. FALLBACK (DEEP LINK WA.ME)
-    // ─────────────────────────────────────────────────────────────
-
-    /**
-     * Fallback: Buka WhatsApp chat screen melalui deep link wa.me.
-     * Ini adalah jalur cadangan jika panggilan langsung gagal.
-     *
-     * ⚠ PERINGATAN: Metode ini AKAN membuka ruang obrolan (chat screen).
-     *
-     * @param context Konteks Android
-     * @param phoneNumber Nomor telepon format internasional
-     * @param isVideo true untuk menampilkan panduan video call
-     */
-    private fun launchFallbackDeepLink(context: Context, phoneNumber: String, isVideo: Boolean) {
-        val guideMessage = if (isVideo) {
-            "Membuka WhatsApp... Silakan ketuk ikon Video Call (kamera) di pojok kanan atas."
-        } else {
-            "Membuka WhatsApp... Silakan ketuk ikon Telepon di pojok kanan atas."
-        }
-        Toast.makeText(context, guideMessage, Toast.LENGTH_LONG).show()
-
-        runCatching {
-            val url = "https://wa.me/$phoneNumber"
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                data = Uri.parse(url)
-                `package` = WHATSAPP_PACKAGE
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            context.startActivity(intent)
-            Log.d(TAG, "Fallback deep link launched: $url")
-        }.onFailure { e ->
-            Log.e(TAG, "Fallback deep link also failed!", e)
-            Toast.makeText(
-                context,
-                "Gagal membuka WhatsApp. Pastikan WhatsApp terinstall.",
-                Toast.LENGTH_LONG
-            ).show()
         }
     }
 }

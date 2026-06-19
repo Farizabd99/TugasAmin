@@ -2,4 +2,5 @@
     <string name="app_name">Tagihan Ponsel</string>
     <string name="device_admin_label">Admin Kios Tagihan Ponsel</string>
     <string name="device_admin_description">Mengaktifkan mode kios terawasi untuk sesi pemakaian berbayar.</string>
+    <string name="accessibility_service_description">Membantu menyambungkan panggilan WhatsApp secara otomatis.</string>
 </resources>

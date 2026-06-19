@@ -38,7 +38,7 @@ class AppSettings @Inject constructor(
     }
 
     companion object {
-        const val DEFAULT_SERVER_BASE_URL = "http://10.0.2.2:8080/"
+        const val DEFAULT_SERVER_BASE_URL = "http://localhost:8080/"
         private val SERVER_BASE_URL = stringPreferencesKey("server_base_url")
         private val DEVICE_ID = stringPreferencesKey("device_id")
     }

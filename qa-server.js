@@ -52,6 +52,7 @@ function activeSessionFor(deviceId) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://localhost");
+    console.log(`[QA Server] Request: ${req.method} ${url.pathname}`);
 
     if (req.method === "POST" && url.pathname === "/api/devices/register") {
       const body = await readJson(req);

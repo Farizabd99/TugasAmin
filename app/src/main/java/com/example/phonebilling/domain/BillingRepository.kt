@@ -55,6 +55,9 @@ class BillingRepository @Inject constructor(
     private var sessionListener: ListenerRegistration? = null
     private var operatorDevicesListener: ListenerRegistration? = null
     private var operatorSessionsListener: ListenerRegistration? = null
+    private var serverTimeOffset: Long = 0L
+
+    fun getServerTimeOffset(): Long = serverTimeOffset
 
     fun observeDevices(): Flow<List<DeviceEntity>> = deviceDao.observeDevices()
     fun observeActiveSessions(): Flow<List<SessionEntity>> = sessionDao.observeSessionsByStatus(SessionStatus.ACTIVE)
@@ -66,6 +69,7 @@ class BillingRepository @Inject constructor(
     fun observeTariffs(): Flow<List<TariffEntity>> = tariffDao.observeActiveTariffs()
     fun observeServerUrl(): Flow<String> = settings.serverBaseUrl
     fun observeDeviceId(): Flow<String> = settings.deviceId
+    fun isLocalServerMode(): Boolean = firestore == null
 
     suspend fun ensureDefaults() {
         if (operatorDao.count() == 0) {
@@ -152,7 +156,9 @@ class BillingRepository @Inject constructor(
             return runCatching {
                 val status = api(baseUrl).getDeviceStatus(deviceId).data
                 if (status != null) {
-                    val timestamp = now()
+                    val clientTime = System.currentTimeMillis()
+                    serverTimeOffset = status.serverTime - clientTime
+                    val timestamp = clientTime + serverTimeOffset
                     val current = deviceDao.getDevice(deviceId)
                     deviceDao.upsert(
                         current?.copy(status = status.status, lastSeenAt = timestamp)
@@ -645,7 +651,7 @@ class BillingRepository @Inject constructor(
     }
 
     private fun api(baseUrl: String) = apiFactory?.create(baseUrl) ?: error("API Provider not configured")
-    private fun now() = System.currentTimeMillis()
+    fun now() = System.currentTimeMillis() + serverTimeOffset
 }
 
 private fun Int.minutesToMillis(): Long = this * 60_000L

@@ -47,11 +47,12 @@ class ClientViewModel @Inject constructor(
                 ticker
             ) { session, devices, now ->
                 val status = devices.firstOrNull { it.deviceId == deviceId }?.status ?: DeviceStatus.WAITING
+                val adjustedNow = now + repository.getServerTimeOffset()
                 ClientUiState(
                     deviceId = deviceId,
                     status = status,
                     activeSession = session,
-                    remainingMillis = (session?.endsAt ?: now) - now
+                    remainingMillis = (session?.endsAt ?: adjustedNow) - adjustedNow
                 )
             }
             combine(
@@ -77,6 +78,19 @@ class ClientViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            repository.observeDeviceId().collect { deviceId ->
+                if (deviceId.isNotBlank()) {
+                    while (true) {
+                        if (repository.isLocalServerMode()) {
+                            android.util.Log.d("ClientViewModel", "Polling device status for local mode: $deviceId")
+                            repository.refreshClientStatus(deviceId)
+                        }
+                        delay(3_000)
+                    }
+                }
+            }
+        }
+        viewModelScope.launch {
             var lastStatus: DeviceStatus? = null
             repository.observeDeviceId().collect { deviceId ->
                 if (deviceId.isNotBlank()) {
@@ -96,7 +110,9 @@ class ClientViewModel @Inject constructor(
             while (true) {
                 ticker.value = System.currentTimeMillis()
                 state.value.activeSession?.let {
-                    if (state.value.remainingMillis <= 0) repository.expireSession(it)
+                    val adjustedNow = ticker.value + repository.getServerTimeOffset()
+                    val remaining = it.endsAt - adjustedNow
+                    if (remaining <= 0) repository.expireSession(it)
                 }
                 delay(1_000)
             }
