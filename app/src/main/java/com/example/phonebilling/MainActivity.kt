@@ -38,6 +38,11 @@ import com.example.phonebilling.ui.operator.OperatorDashboardScreen
 import com.example.phonebilling.ui.operator.OperatorLoginScreen
 import com.example.phonebilling.ui.operator.SettingsScreen
 import com.example.phonebilling.ui.operator.StartSessionScreen
+import com.example.phonebilling.ui.client.hasOverlayPermission
+import com.example.phonebilling.ui.client.isAccessibilityServiceEnabled
+import com.example.phonebilling.ui.client.hasNotificationPermission
+import com.example.phonebilling.ui.client.hasCallPhonePermission
+import com.example.phonebilling.ui.client.hasContactsPermission
 import com.example.phonebilling.worker.BillingSyncWorker
 import dagger.hilt.android.AndroidEntryPoint
 import java.util.concurrent.TimeUnit
@@ -74,7 +79,6 @@ class MainActivity : ComponentActivity() {
         )
     }
 }
-
 @Composable
 private fun PhoneBillingNavHost(kioskController: KioskController) {
     val navController = rememberNavController()
@@ -87,9 +91,19 @@ private fun PhoneBillingNavHost(kioskController: KioskController) {
     LaunchedEffect(currentRoute, clientState.status, clientState.activeSession, clientState.remainingMillis) {
         activity?.let { act ->
             if (currentRoute?.startsWith("client/") == true) {
-                val isActive = clientState.status == DeviceStatus.ACTIVE && clientState.activeSession != null && clientState.remainingMillis > 0
-                kioskController.allowLockTaskIfOwner(act, sessionActive = isActive)
-                kioskController.start(act)
+                val allPermissionsGranted = hasOverlayPermission(act) &&
+                        isAccessibilityServiceEnabled(act) &&
+                        hasNotificationPermission(act) &&
+                        hasCallPhonePermission(act) &&
+                        hasContactsPermission(act)
+
+                if (allPermissionsGranted) {
+                    val isActive = clientState.status == DeviceStatus.ACTIVE && clientState.activeSession != null && clientState.remainingMillis > 0
+                    kioskController.allowLockTaskIfOwner(act, sessionActive = isActive)
+                    kioskController.start(act)
+                } else {
+                    kioskController.stop(act)
+                }
             } else {
                 kioskController.stop(act)
             }

@@ -5,6 +5,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -48,6 +49,12 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
 
 // ─────────────────────────────────────────────────────────────
 // Pengecekan Izin Panggilan Otomatis
@@ -69,6 +76,32 @@ fun isAccessibilityServiceEnabled(context: Context): Boolean {
     ) ?: return false
     return enabledServices.split(":").any { it.equals(expectedId, ignoreCase = true) }
 }
+
+fun hasNotificationPermission(context: Context): Boolean {
+    return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+        ContextCompat.checkSelfPermission(
+            context, android.Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+    } else {
+        true
+    }
+}
+
+fun hasCallPhonePermission(context: Context): Boolean {
+    return ContextCompat.checkSelfPermission(
+        context, android.Manifest.permission.CALL_PHONE
+    ) == PackageManager.PERMISSION_GRANTED
+}
+
+fun hasContactsPermission(context: Context): Boolean {
+    return ContextCompat.checkSelfPermission(
+        context, android.Manifest.permission.READ_CONTACTS
+    ) == PackageManager.PERMISSION_GRANTED &&
+    ContextCompat.checkSelfPermission(
+        context, android.Manifest.permission.WRITE_CONTACTS
+    ) == PackageManager.PERMISSION_GRANTED
+}
+
 // Langkah pemilihan pada sesi aktif klien
 // ─────────────────────────────────────────────────────────────
 
@@ -92,6 +125,25 @@ fun ClientWaitingScreen(
     
     var overlayOk by remember { mutableStateOf(hasOverlayPermission(context)) }
     var accessibilityOk by remember { mutableStateOf(isAccessibilityServiceEnabled(context)) }
+    var notificationOk by remember { mutableStateOf(hasNotificationPermission(context)) }
+    var callPhoneOk by remember { mutableStateOf(hasCallPhonePermission(context)) }
+    var contactsOk by remember { mutableStateOf(hasContactsPermission(context)) }
+
+    var showOverlayGuide by remember { mutableStateOf(false) }
+    var showAccessibilityGuide by remember { mutableStateOf(false) }
+
+    // Launchers untuk izin runtime
+    val notificationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> notificationOk = granted }
+
+    val callPhoneLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> callPhoneOk = granted }
+
+    val contactsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results -> contactsOk = results.values.all { it } }
 
     // Dapatkan lifecycle owner untuk memperbarui status ketika kembali dari halaman pengaturan
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -100,11 +152,129 @@ fun ClientWaitingScreen(
             if (event == Lifecycle.Event.ON_RESUME) {
                 overlayOk = hasOverlayPermission(context)
                 accessibilityOk = isAccessibilityServiceEnabled(context)
+                notificationOk = hasNotificationPermission(context)
+                callPhoneOk = hasCallPhonePermission(context)
+                contactsOk = hasContactsPermission(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    val allPermissionsGranted = overlayOk && accessibilityOk && notificationOk && callPhoneOk && contactsOk
+
+    if (showOverlayGuide) {
+        Dialog(onDismissRequest = { showOverlayGuide = false }) {
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 8.dp,
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "Panduan Menggambar di Atas Aplikasi",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "1. Anda akan diarahkan ke pengaturan sistem.\n" +
+                               "2. Cari dan pilih aplikasi \"Wartel\".\n" +
+                               "3. Aktifkan/Centang pilihan \"Izinkan menarik di atas aplikasi lain\" (Allow display over other apps).",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        SecondaryButton(
+                            text = "Batal",
+                            onClick = { showOverlayGuide = false },
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                        PrimaryButton(
+                            text = "Buka Pengaturan",
+                            onClick = {
+                                showOverlayGuide = false
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                    val intent = Intent(
+                                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                        Uri.parse("package:${context.packageName}")
+                                    )
+                                    runCatching {
+                                        context.startActivity(intent)
+                                    }.onFailure {
+                                        runCatching {
+                                            context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
+                                        }
+                                    }
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (showAccessibilityGuide) {
+        Dialog(onDismissRequest = { showAccessibilityGuide = false }) {
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 8.dp,
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "Panduan Aksesibilitas",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "1. Anda akan diarahkan ke pengaturan Aksesibilitas.\n" +
+                               "2. Cari dan ketuk menu \"Aplikasi Terunduh\" (Downloaded apps) atau \"Layanan Terunduh Lainnya\".\n" +
+                               "3. Pilih aplikasi \"Wartel\".\n" +
+                               "4. Aktifkan \"Gunakan Wartel\" (Use Wartel).\n\n" +
+                               "⚠️ JIKA TOMBOL DI-GRAYOUT (Restricted Settings):\n" +
+                               "- Buka Settings HP -> Apps -> Manage Apps -> Wartel.\n" +
+                               "- Ketuk titik 3 di kanan atas -> pilih \"Allow restricted settings\" (Izinkan setelan dibatasi).\n" +
+                               "- Kembali ke halaman ini dan aktifkan Aksesibilitas.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        SecondaryButton(
+                            text = "Batal",
+                            onClick = { showAccessibilityGuide = false },
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                        PrimaryButton(
+                            text = "Buka Pengaturan",
+                            onClick = {
+                                showAccessibilityGuide = false
+                                runCatching {
+                                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                                }
+                            }
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -115,10 +285,15 @@ fun ClientWaitingScreen(
         }
     }
     ScreenScaffold(title = "Menunggu", subtitle = "Perangkat siap diaktifkan oleh operator") {
-        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
             
             // Tampilkan Setup Wizard jika izin belum lengkap
-            if (!overlayOk || !accessibilityOk) {
+            if (!allPermissionsGranted) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -127,51 +302,42 @@ fun ClientWaitingScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            text = "PANDUAN SETUP IZIN PANGGILAN",
+                            text = "PANDUAN SETUP IZIN",
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
-                        Text(
-                            text = "Aplikasi memerlukan izin tambahan agar panggilan WhatsApp dapat berjalan otomatis tanpa membuka chat screen.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer
-                        )
-                        
-                        if (!overlayOk) {
-                            PrimaryButton(
-                                text = "1. Izinkan Menggambar di Atas Aplikasi Lain",
-                                onClick = {
-                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                                        val intent = Intent(
-                                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                            Uri.parse("package:${context.packageName}")
-                                        )
-                                        context.startActivity(intent)
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        } else {
-                            Text("✓ Izin overlay aktif", color = Color(0xFF2E7D32), style = MaterialTheme.typography.bodySmall)
-                        }
 
-                        if (!accessibilityOk) {
-                            PrimaryButton(
-                                text = "2. Aktifkan Aksesibilitas (Asisten Telepon)",
-                                onClick = {
-                                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                                    context.startActivity(intent)
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            Text(
-                                text = "Petunjuk Xiaomi/Vivo: Jika dinonaktifkan (Restricted), silakan ke Settings -> Apps -> Manage Apps -> Wartel -> Ketuk titik 3 di kanan atas -> Izinkan Setelan Dibatasi (Allow restricted settings).",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onErrorContainer
-                            )
-                        } else {
-                            Text("✓ Aksesibilitas aktif", color = Color(0xFF2E7D32), style = MaterialTheme.typography.bodySmall)
-                        }
+                        PermissionRow(
+                            title = "Menggambar di Atas Aplikasi",
+                            description = "Wajib untuk otomatisasi WhatsApp.",
+                            granted = overlayOk,
+                            onRequest = { showOverlayGuide = true }
+                        )
+                        PermissionRow(
+                            title = "Aksesibilitas",
+                            description = "Wajib untuk mengklik tombol WhatsApp.",
+                            granted = accessibilityOk,
+                            onRequest = { showAccessibilityGuide = true },
+                            extraNote = "Xiaomi/Vivo: Cek 'Setelan Dibatasi' jika izin dinonaktifkan."
+                        )
+                        PermissionRow(
+                            title = "Notifikasi",
+                            description = "Wajib agar panggilan terpantau.",
+                            granted = notificationOk,
+                            onRequest = { if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) notificationLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS) }
+                        )
+                        PermissionRow(
+                            title = "Telepon",
+                            description = "Wajib untuk memproses status panggilan.",
+                            granted = callPhoneOk,
+                            onRequest = { callPhoneLauncher.launch(android.Manifest.permission.CALL_PHONE) }
+                        )
+                        PermissionRow(
+                            title = "Kontak",
+                            description = "Wajib untuk sinkronisasi data.",
+                            granted = contactsOk,
+                            onRequest = { contactsLauncher.launch(arrayOf(android.Manifest.permission.READ_CONTACTS, android.Manifest.permission.WRITE_CONTACTS)) }
+                        )
                     }
                 }
             }
@@ -190,6 +356,39 @@ fun ClientWaitingScreen(
                 { activity?.let { kioskController.stop(it) } },
                 Modifier.fillMaxWidth()
             )
+        }
+    }
+}
+
+@Composable
+private fun PermissionRow(
+    title: String,
+    description: String,
+    granted: Boolean,
+    onRequest: () -> Unit,
+    extraNote: String? = null
+) {
+    if (granted) {
+        Text("\u2713 $title", color = Color(0xFF2E7D32), style = MaterialTheme.typography.bodyMedium)
+    } else {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            SecondaryButton(
+                text = "\u2192 $title",
+                onClick = onRequest,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onErrorContainer
+            )
+            extraNote?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
         }
     }
 }
